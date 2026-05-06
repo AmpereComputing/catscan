@@ -1,0 +1,121 @@
+# Copyright (c) 2026 Ampere Computing. All rights reserved.
+# SPDX-License-Identifier: BSD-3-Clause
+
+import os
+import unittest
+from functools import partial
+from io import BufferedReader, TextIOWrapper
+from tempfile import NamedTemporaryFile, TemporaryFile
+
+import urwid
+from perf_streams.event_stream import EventStreamWriter
+from test_data import CatscanDataTest
+
+from catscan.__main__ import setup
+from catscan.events import trace_events
+
+TOTAL_EVENTS = 20
+PS_PER_CYCLE = 100
+
+
+class Args:
+    def __init__(self, **kwargs):
+        self.view = "unspecified"
+        self.cache = None
+        self.instruction_arch = "arm64"
+        self.period = PS_PER_CYCLE
+        self.sort_keys = True
+        self.instruction_commit_event = "core.commit"
+        self.instruction_commit_index = "core.inum"
+        self.convert_enumerations = True
+        self.debug = True
+
+        self.__dict__.update(kwargs)
+
+    def __getattr__(self, name):
+        return []
+
+
+class TestingScreen(urwid.display.raw.Screen):
+    def __init__(self, output):
+        self.input_r_fd, self.input_w_fd = os.pipe()
+
+        self.input_r_raw = os.fdopen(self.input_r_fd, "rb")
+        self.input_r_buf = BufferedReader(self.input_r_raw)
+        self.input_r = TextIOWrapper(self.input_r_buf, encoding="utf-8")
+
+        self.input_w_buf = os.fdopen(self.input_w_fd, "wb")
+        self.input_w = TextIOWrapper(self.input_w_buf, encoding="utf-8")
+
+        self.output = output
+        super().__init__(input=self.input_r, output=self.output)
+
+    def get_cols_rows(self):
+        return (512, 512)
+
+    def read_all(self):
+        self.output.seek(0)
+        return self.output.read()
+
+    def do(self, command_or_motion):
+        self.input_w.write(command_or_motion)
+        if command_or_motion.startswith(":"):
+            self.input_w.write("\r\n")
+        self.input_w.flush()
+
+    def __del__(self):
+        self.input_r.close()
+        self.input_w.close()
+
+
+class TestMain(CatscanDataTest):
+    @classmethod
+    def event_stream_setup(cls):
+        writer = EventStreamWriter(cls.test_filename)
+        events = [writer.define_event(f"event_{number}", "some event") for number in range(TOTAL_EVENTS)]
+        writer.start_simulation()
+        for cycle in range(1000):
+            time = cycle * PS_PER_CYCLE
+            for index, event in enumerate(events):
+                if cycle % (index + 1) == 0:
+                    writer.post_event(event, time=time)
+
+        writer.close()
+
+        events = [trace_events.trace_spec("event_*")]
+        cls.set_event_stream_params(events=events)
+
+    def args(self, **kwargs):
+        return Args(
+            input=self.test_filename, log=self.logging.name, event=[trace_events.trace_spec("event_*")], **kwargs
+        )
+
+    def do(self, command_or_motion):
+        self.screen.do(command_or_motion)
+
+    def run_catscan(self, args, *steps: tuple[int, str]):
+        top = setup(args, screen=self.screen)
+
+        for delay, command_or_motion in steps:
+            top.main_loop.event_loop.alarm(delay, partial(self.do, command_or_motion))
+
+        delay = steps[-1][0] if steps else 0
+        top.main_loop.event_loop.alarm(delay + 1, partial(self.do, ":quit"))
+
+        top.main_loop.run()
+        return self.screen.read_all()
+
+    def setUp(self):
+        self.logging = NamedTemporaryFile()
+        self.output = TemporaryFile("w+")
+        self.screen = TestingScreen(self.output)
+
+    def test_open(self):
+        out = self.run_catscan(self.args())
+        self.assertIn("Loading (100%)", out)
+        for event in range(TOTAL_EVENTS):
+            self.assertIn(f"event_{event}", out)
+
+    def test_help(self):
+        out = self.run_catscan(self.args(), (1, "?"), (2, "q"))
+        self.assertIn("Help / Input Mappings", out)

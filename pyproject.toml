@@ -1,0 +1,116 @@
+[project]
+name = 'catscan'
+version = '1.0.0'
+description = 'A tool to visualize streams of events within a terminal, written with micro-architectural simulators in mind'
+readme = 'README.md'
+license = {file = 'LICENSE.txt'}
+authors = [
+  {name = 'Aaron Lindsay', email = 'aaron@os.amperecomputing.com'},
+  {name = 'Nick Kelly', email = 'kellynic@os.amperecomputing.com'},
+]
+requires-python = ">= 3.12"
+dependencies = [
+  'capstone>=5.0',
+  'protobuf>=4.25.0',
+  'urwid>=2.6.16',
+  'perf_streams @ git+ssh://git@github.com/AmpereComputing/perf-streams.git'
+]
+
+[dependency-groups]
+build = [
+    "hatch"
+]
+test = [
+    "coverage"
+]
+lint = [
+    "ruff"
+]
+all = [
+    {include-group = "build"},
+    {include-group = "test"},
+    {include-group = "lint"},
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project.scripts]
+catscan = 'catscan:__main__.main'
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.envs.hatch-test.scripts]
+# Override the default 'run' script to use 'unittest'
+run = "python -m unittest discover {args}"
+
+[tool.ruff]
+# Configure similar to black (except for line-length)
+line-length = 120
+indent-width = 4
+target-version = "py312"
+
+[tool.ruff.lint]
+# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
+# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
+# McCabe complexity (`C901`) by default.
+select = [
+  "D3",
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I",
+  "TID252",
+#  "SIM", # consider simplify warnings
+#  "D1", # consider docstring warnings
+#  "D4", # consider docstring warnings
+#  "ERA", # consider some un-commented code warnings
+#  "C4", # consider some comprehension warnings
+#  "PL", # consider some pylint warnings
+#  "PD", # consider some pandas warnings
+]
+ignore = [
+  "F401",
+  "F403",
+  "W191",
+  "E111",
+  "E114",
+  "E117",
+  "E402",
+  "E402",
+  "E722",
+  "E741",
+  "D206",
+  "D300",
+  "Q000",
+  "Q001",
+  "Q002",
+  "Q003",
+  "COM812",
+  "COM819",
+  "ISC001",
+  "ISC002"
+]
+
+# Allow fix for all enabled rules (when `--fix`) is provided.
+fixable = ["ALL"]
+unfixable = ["F401"]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["F405", "E731"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+docstring-code-format = true
