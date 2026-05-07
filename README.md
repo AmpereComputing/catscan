@@ -7,7 +7,6 @@
 This repository builds and installs:
 
 - `catscan` Python package
-- `events` Python package
 
 ## Prerequisites
 
@@ -23,7 +22,7 @@ depending on how you install or build catscan. For example, you may need to
 ensure they are installed first if you are using OS-provided python packages
 instead of a virtual environment/`pip`:
 
-- `perf_streams` (catscan's sister project - provides event stream definitions
+- [`perf-streams`](https://github.com/AmpereComputing/perf-streams) (catscan's sister project - provides event stream definitions
   and libraries/utilities)
 * `capstone` (5.0+)
 * `protobuf` (4.25.0+)
