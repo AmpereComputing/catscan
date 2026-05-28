@@ -142,3 +142,95 @@ class TestCommitSync(unittest.TestCase):
         # Ensure we never received the message sent after the FIFO was stopped
         time.sleep(2)
         self.assertEqual(len(self.first_incoming_messages), 0)
+
+    def test_state_json_round_trip_supports_modes(self):
+        encoder = CommitSyncStateJSONEncoder()
+        decoder = CommitSyncStateJSONDecoder()
+
+        for mode in ("time", "transaction_row"):
+            state = CommitSyncState(
+                inum=42,
+                cycles_per_char=Fraction(3, 2),
+                expand_rows=True,
+                chars_rel_to_start=-7,
+                mode=mode,
+            )
+            self.assertEqual(decoder.decode(encoder.encode(state)), state)
+
+    def test_state_json_decode_defaults_mode_to_time(self):
+        decoder = CommitSyncStateJSONDecoder()
+
+        state = decoder.decode(
+            '{"inum": 9, "cycles_per_char": {"numerator": 5, "denominator": 4}, '
+            '"expand_rows": false, "chars_rel_to_start": 11}'
+        )
+
+        self.assertEqual(state.mode, "time")
+        self.assertEqual(state.inum, 9)
+        self.assertEqual(state.cycles_per_char, Fraction(5, 4))
+
+    def test_transaction_row_receive_bypasses_pushout_scaling(self):
+        received = []
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            syncer = CommitSyncer(tmpfile.name, lambda: None, lambda: None, received.append)
+
+        syncer.initialized = True
+        syncer.stopped = False
+        syncer.outgoing = object()
+        syncer.my_pushout_index = {10: 8, 11: 16}
+        syncer.other_pushout_index = {10: 2, 11: 4}
+
+        sync_state = CommitSyncState(
+            inum=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=-9,
+            mode="transaction_row",
+        )
+        syncer.receive(sync_state)
+
+        self.assertEqual(received, [sync_state])
+        syncer.outgoing = None
+        syncer.stop()
+
+
+class TestCommitSyncHandshake(unittest.TestCase):
+    def test_handshake_rejects_mixed_view_modes(self):
+        started = []
+        stopped = []
+
+        def started_callback(which):
+            started.append(which)
+
+        def stopped_callback(which):
+            stopped.append(which)
+
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            first_syncer = CommitSyncer(
+                tmpfile.name,
+                lambda: started_callback("first"),
+                lambda: stopped_callback("first"),
+                lambda _state: None,
+                view_mode="resource",
+            )
+            second_syncer = CommitSyncer(
+                tmpfile.name,
+                lambda: started_callback("second"),
+                lambda: stopped_callback("second"),
+                lambda _state: None,
+                view_mode="transaction",
+            )
+            first_syncer.start(None)
+            second_syncer.start(None)
+
+            for _ in range(10):
+                if first_syncer.stopped and second_syncer.stopped:
+                    break
+                time.sleep(0.5)
+
+            self.assertEqual(started, [])
+            self.assertTrue(first_syncer.stopped)
+            self.assertTrue(second_syncer.stopped)
+            self.assertTrue(stopped)
+            self.assertIn("same view mode", first_syncer.failure_message)
+            self.assertIn("same view mode", second_syncer.failure_message)

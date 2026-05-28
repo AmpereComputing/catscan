@@ -6,11 +6,12 @@ import atexit
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from fractions import Fraction
 from threading import Thread
-from typing import NamedTuple
+from typing import Literal, NamedTuple
 
 import urwid
 from perf_streams.event_stream import Event
@@ -31,9 +32,9 @@ def build_commit_index(event_row: EventData, data_name: str) -> dict[int, int]:
 
 def build_pushout_index(commit_index: dict[int, int], ps_per_cycle: int) -> dict[int, int]:
     pushout_index = {}
-    for inum, time in commit_index.items():
+    for inum, commit_time in commit_index.items():
         if inum - 1 in commit_index:
-            pushout_index[inum] = (time - commit_index[inum - 1]) // ps_per_cycle
+            pushout_index[inum] = (commit_time - commit_index[inum - 1]) // ps_per_cycle
     return pushout_index
 
 
@@ -73,6 +74,7 @@ class CommitSyncState(NamedTuple):
     cycles_per_char: Fraction  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
     expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
     chars_rel_to_start: int  # The number of characters right-of-center the referenced inum is
+    mode: Literal["time", "transaction_row"] = "time"
 
 
 class CommitSyncStateJSONEncoder(json.JSONEncoder):
@@ -95,6 +97,7 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
             cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
             expand_rows=data["expand_rows"],
             chars_rel_to_start=data["chars_rel_to_start"],
+            mode=data.get("mode", "time"),
         )
 
 
@@ -106,7 +109,9 @@ class CommitSyncer:
         sync_stopped_callback: Callable[[], None],
         sync_callback: Callable[[CommitSyncState], None],
         column_header_width: int = 0,
+        commit_index: dict[int, int] | None = None,
         pushout_index: dict[int, int] | None = None,
+        view_mode: Literal["resource", "transaction"] = "resource",
     ) -> None:
         self.fifo_basename = fifo_basename
         self.sync_started_callback = sync_started_callback
@@ -124,10 +129,15 @@ class CommitSyncer:
         self.other_suffix = "secondary" if self.is_primary else "primary"
         self.my_init_filename = os.path.abspath(f"{fifo_basename}.init.{self.my_suffix}")
         self.other_init_filename = os.path.abspath(f"{fifo_basename}.init.{self.other_suffix}")
+        self.my_commit_index = commit_index if commit_index else {}
         self.my_pushout_index = pushout_index if pushout_index else {}
+        self.my_view_mode = view_mode
         self.my_column_header_width = column_header_width
+        self.other_commit_index = {}
         self.other_pushout_index = {}
+        self.other_view_mode = "resource"
         self.other_column_header_width = 0
+        self.failure_message = None
 
         self.state_encoder = CommitSyncStateJSONEncoder()
         self.state_decoder = CommitSyncStateJSONDecoder()
@@ -217,7 +227,9 @@ class CommitSyncer:
         with open(self.my_init_filename, "w") as init_file:
             to_json = {
                 "column_header_width": self.my_column_header_width,
+                "commit_index": self.my_commit_index,
                 "pushout_index": self.my_pushout_index,
+                "view_mode": self.my_view_mode,
             }
             json.dump(to_json, init_file)
             init_file.flush()
@@ -232,10 +244,32 @@ class CommitSyncer:
             self.incoming = open(self.fifo1_name)
             self.outgoing = open(self.fifo2_name, "w")
 
-        with open(self.other_init_filename) as init_file:
-            from_json = json.load(init_file)
-            self.other_column_header_width = from_json["column_header_width"]
-            self.other_pushout_index = {int(inum): pushout for inum, pushout in from_json["pushout_index"].items()}
+        while not self.stopped:
+            try:
+                with open(self.other_init_filename) as init_file:
+                    from_json = json.load(init_file)
+                    self.other_column_header_width = from_json["column_header_width"]
+                    self.other_commit_index = {
+                        int(inum): time for inum, time in from_json.get("commit_index", {}).items()
+                    }
+                    self.other_pushout_index = {
+                        int(inum): pushout for inum, pushout in from_json["pushout_index"].items()
+                    }
+                    self.other_view_mode = from_json.get("view_mode", "resource")
+                break
+            except FileNotFoundError:
+                time.sleep(0.05)
+        else:
+            return
+
+        if self.other_view_mode != self.my_view_mode:
+            self.failure_message = (
+                "Commit sync requires both catscan processes to use the same view mode "
+                f"(local: {self.my_view_mode}, remote: {self.other_view_mode})"
+            )
+            logging.info(self.failure_message)
+            self.stop()
+            return
 
         # Signify that initialization is complete to any observers waiting on
         # that
@@ -334,7 +368,8 @@ class CommitSyncer:
 
         self.cleanup_file(self.fifo1_name)
         self.cleanup_file(self.fifo2_name)
-        self.cleanup_file(self.my_init_filename)
+        if self.initialized or self.failure_message is None:
+            self.cleanup_file(self.my_init_filename)
         if self.outgoing:
             self.outgoing.close()
             self.outgoing = None
@@ -373,6 +408,16 @@ class CommitSyncer:
             )
             return
 
+        if sync_state.mode == "transaction_row":
+            adjusted_sync_state = sync_state
+            if self.main_loop is None:
+                self.sync_callback(adjusted_sync_state)
+            else:
+                self.latest_sync_state = adjusted_sync_state
+                # Required to wakeup/interrupt main loop
+                os.write(self.notifier, b"u")
+            return
+
         # Scale the synced horizontal time based on the relative differences in
         # commit pushout to ensure smoother movements around transitions
         # between the inum being synced against
@@ -406,6 +451,7 @@ class CommitSyncer:
             cycles_per_char=sync_state.cycles_per_char,
             expand_rows=sync_state.expand_rows,
             chars_rel_to_start=rel_chars,
+            mode=sync_state.mode,
         )
 
         if self.main_loop is None:

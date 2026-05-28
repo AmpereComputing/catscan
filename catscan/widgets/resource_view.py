@@ -105,6 +105,7 @@ class ResourceView(EventView):
                 groups_seen.add(row.group)
             if newly_selected_row == row.name:
                 self.list_walker.set_focus(row_index + len(groups_seen))
+                self._emit_viewport_change_if_needed()
                 return
 
 
@@ -176,6 +177,7 @@ class SubsetResourceView(ResourceView):
         for i, row_name in enumerate(self.events):
             if newly_selected_row == row_name:
                 self.list_walker.set_focus(i)
+                self._emit_viewport_change_if_needed()
                 return
 
     def rows(self, size: tuple[int], focus: bool = False) -> int:

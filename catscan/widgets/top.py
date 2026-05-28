@@ -120,8 +120,12 @@ class Top(urwid.widget.Widget):
 
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
+        self.commit_sync_view_mode = "transaction" if args.view == DataView.TRANSACTIONS else "resource"
         self.commit_sync_index = {}
+        self.transaction_row_commit_candidates = {}
+        self.commit_inum_to_transaction_row = {}
         self.commit_syncer = None
+        self._suppress_transaction_commit_sync = False
 
         self.loading_pct = 0
         self.loading_thread = None
@@ -219,6 +223,8 @@ class Top(urwid.widget.Widget):
             on_make_selection=self.make_selection,
             on_extend_selection=self.extend_selection,
             on_translate_event=self.translate_event,
+            on_viewport_change=self.on_viewport_change,
+            on_focus_row_change=self.on_focus_row_change,
             **kwargs,
         )
 
@@ -241,6 +247,10 @@ class Top(urwid.widget.Widget):
         if focused:
             return self.view_rows[focused[0]]
         return self._resource_view
+
+    @property
+    def _transaction_view(self) -> EventView:
+        return self.view_rows[f"{DefaultViews.MAIN}.{DefaultViews.TRANSACTION}"]
 
     def _get_data_view_from_views(self, views: list[str] | None = None) -> EventView:
         # NOTE: currently only returns a single data-view as multiple are not
@@ -461,10 +471,26 @@ class Top(urwid.widget.Widget):
             self.commit_sync_index = build_commit_index(
                 self.stream_data.event_rows[self.commit_sync_event], self.commit_sync_data_name
             )
-            self.pushout_index = build_pushout_index(self.commit_sync_index, ps_per_cycle)
         else:
             self.commit_sync_index = {}
-            self.pushout_index = {}
+            for transaction_row in self.stream_data.transaction_event_rows.values():
+                for event in transaction_row[:]:
+                    if self.commit_sync_data_name in event.data:
+                        self.commit_sync_index[event.data[self.commit_sync_data_name]] = event.time
+
+        self.pushout_index = build_pushout_index(self.commit_sync_index, ps_per_cycle)
+
+        self.transaction_row_commit_candidates = {}
+        self.commit_inum_to_transaction_row = {}
+        for txid, transaction_row in self.stream_data.transaction_event_rows.items():
+            candidates = []
+            for event in transaction_row[:]:
+                if self.commit_sync_data_name in event.data:
+                    inum = event.data[self.commit_sync_data_name]
+                    candidates.append(inum)
+                    self.commit_inum_to_transaction_row[inum] = txid
+            if candidates:
+                self.transaction_row_commit_candidates[txid] = candidates
 
         self.time_header.update_stream_data(stream_data)
         self.view_rows.update_stream_data(stream_data)
@@ -509,12 +535,13 @@ class Top(urwid.widget.Widget):
             new_state = new_state.copy_with(start_ps=new_state.start_ps - difference)
 
         if new_state != self.state:
+            old_state = self.state
             should_send_commit_sync = not external_sync and (
-                new_state.ps_per_cycle != self.state.ps_per_cycle
-                or new_state.column_header_width != self.state.column_header_width
-                or new_state.cycles_per_char != self.state.cycles_per_char
-                or new_state.expand_rows != self.state.expand_rows
-                or new_state.start_ps != self.state.start_ps
+                new_state.ps_per_cycle != old_state.ps_per_cycle
+                or new_state.column_header_width != old_state.column_header_width
+                or new_state.cycles_per_char != old_state.cycles_per_char
+                or new_state.expand_rows != old_state.expand_rows
+                or new_state.start_ps != old_state.start_ps
             )
 
             self.state = new_state
@@ -526,7 +553,7 @@ class Top(urwid.widget.Widget):
             self.view_rows.update_state(new_state)
             self.status_bar.update_state(new_state)
 
-            if new_state.expand_rows != self.state.expand_rows:
+            if new_state.expand_rows != old_state.expand_rows:
                 self._update_view_rows(invalidate=False)
             self._invalidate()
 
@@ -977,25 +1004,26 @@ class Top(urwid.widget.Widget):
             self.add_message(f"  {row.decode()}")
 
     def start_commit_sync(self) -> None:
-        self.saved_stream_data = self.stream_data
+        if self.commit_sync_view_mode == "resource":
+            self.saved_stream_data = self.stream_data
 
-        pushout_events = self.commit_syncer.generate_commit_pushout_events(
-            self.stream_data.event_rows[self.commit_sync_event],
-            self.commit_sync_data_name,
-            next_event_id=self.stream_data.max_event_id + 1,
-            ps_per_cycle=self.state.ps_per_cycle,
-        )
+            pushout_events = self.commit_syncer.generate_commit_pushout_events(
+                self.stream_data.event_rows[self.commit_sync_event],
+                self.commit_sync_data_name,
+                next_event_id=self.stream_data.max_event_id + 1,
+                ps_per_cycle=self.state.ps_per_cycle,
+            )
 
-        new_stream_data = self.stream_data.copy_with_events(
-            pushout_events,
-            insert_after=self.commit_sync_event,
-        )
+            new_stream_data = self.stream_data.copy_with_events(
+                pushout_events,
+                insert_after=self.commit_sync_event,
+            )
 
-        self.update_stream_data(
-            new_stream_data,
-            external_column_width=self.commit_syncer.other_column_header_width,
-            zoom_to_extents=False,
-        )
+            self.update_stream_data(
+                new_stream_data,
+                external_column_width=self.commit_syncer.other_column_header_width,
+                zoom_to_extents=False,
+            )
 
         self.eval_commands(self.init_sync_commands)
 
@@ -1004,18 +1032,49 @@ class Top(urwid.widget.Widget):
         self.main_loop.draw_screen()
 
     def stop_commit_sync(self) -> None:
-        # Restore the copy of the event stream data that we took prior to
-        # starting instruction sync
         if hasattr(self, "saved_stream_data"):
+            # Restore the copy of the event stream data that we took prior to
+            # starting instruction sync
             self.update_stream_data(self.saved_stream_data, zoom_to_extents=False)
             del self.saved_stream_data
+
+        if self.commit_syncer and self.commit_syncer.failure_message:
+            self.add_message(self.commit_syncer.failure_message)
 
         # Force redrawing the screen since we're updating the state outside
         # of urwid's normal event loop
         self.main_loop.draw_screen()
 
     def send_commit_sync(self) -> None:
+        self._send_commit_sync_for_row()
+
+    def _send_commit_sync_for_row(self, transaction_row_key: int | None = None) -> None:
         if not self.commit_syncer or not self.commit_syncer.syncing:
+            return
+
+        if self.commit_sync_view_mode == "transaction":
+            transaction_row_key = transaction_row_key or self._transaction_view.top_visible_row_key()
+            if transaction_row_key is None:
+                logging.info("Did not send transaction-row sync because no transaction row is visible or focused")
+                return
+
+            other_inums = set(self.commit_syncer.other_commit_index) | set(self.commit_syncer.other_pushout_index)
+            for anchor_inum in self.transaction_row_commit_candidates.get(transaction_row_key, []):
+                if anchor_inum in other_inums:
+                    self.commit_syncer.send(
+                        CommitSyncState(
+                            inum=anchor_inum,
+                            cycles_per_char=self.state.cycles_per_char,
+                            expand_rows=self.state.expand_rows,
+                            chars_rel_to_start=0,
+                            mode="transaction_row",
+                        )
+                    )
+                    return
+
+            logging.info(
+                "Did not send transaction-row sync because the selected transaction row had no shared commit anchor"
+            )
             return
 
         if self.commit_sync_event not in self.stream_data.event_rows:
@@ -1055,10 +1114,27 @@ class Top(urwid.widget.Widget):
             cycles_per_char=self.state.cycles_per_char,
             expand_rows=self.state.expand_rows,
             chars_rel_to_start=offset_chars,
+            mode="time",
         )
         self.commit_syncer.send(sync_state)
 
     def receive_commit_sync(self, sync_state: CommitSyncState):
+        if sync_state.mode == "transaction_row":
+            transaction_row = self.commit_inum_to_transaction_row.get(sync_state.inum)
+            if transaction_row is None:
+                logging.info(f"Received transaction-row inum not in transaction-row index: {sync_state.inum}")
+                return
+
+            if transaction_row in self._transaction_view.visible_row_keys():
+                return
+
+            self._suppress_transaction_commit_sync = True
+            try:
+                self._transaction_view.scroll_row_to_top(transaction_row)
+            finally:
+                self._suppress_transaction_commit_sync = False
+            return
+
         if sync_state.inum not in self.commit_sync_index:
             logging.info(f"Received inum not in inum index: {sync_state.inum}")
             return
@@ -1076,6 +1152,30 @@ class Top(urwid.widget.Widget):
             ),
             external_sync=True,
         )
+
+    def on_viewport_change(self, view: EventView, _top_row_key) -> None:
+        if self.commit_sync_view_mode != "transaction":
+            return
+
+        if view is not self._transaction_view or not self._transaction_view.has_focus():
+            return
+
+        if self._suppress_transaction_commit_sync:
+            return
+
+        self.send_commit_sync()
+
+    def on_focus_row_change(self, view: EventView, focused_row_key: str | int | None) -> None:
+        if self.commit_sync_view_mode != "transaction":
+            return
+
+        if view is not self._transaction_view or not self._transaction_view.has_focus():
+            return
+
+        if self._suppress_transaction_commit_sync:
+            return
+
+        self._send_commit_sync_for_row(focused_row_key)
 
     def matching_rows(self, pattern: str) -> list[str]:
         row_pattern = glob_to_pattern(pattern)
@@ -1289,7 +1389,9 @@ class Top(urwid.widget.Widget):
                     self.stop_commit_sync,
                     self.receive_commit_sync,
                     self.state.column_header_width,
+                    self.commit_sync_index,
                     self.pushout_index,
+                    self.commit_sync_view_mode,
                 )
 
                 self.commit_syncer.start(self.main_loop)

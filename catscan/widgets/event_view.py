@@ -404,6 +404,8 @@ class EventView(urwid.WidgetWrap, View):
         on_make_selection: Callable,
         on_extend_selection: Callable,
         on_translate_event: Callable,
+        on_viewport_change: Callable | None = None,
+        on_focus_row_change: Callable | None = None,
         length_hint: int = 1,
     ) -> None:
         self.name = name
@@ -417,6 +419,8 @@ class EventView(urwid.WidgetWrap, View):
         self._on_make_selection = on_make_selection
         self._on_extend_selection = on_extend_selection
         self.on_translate_event = on_translate_event
+        self.on_viewport_change = on_viewport_change
+        self.on_focus_row_change = on_focus_row_change
 
         self.list_walker = None
         self.list_box = None
@@ -424,6 +428,9 @@ class EventView(urwid.WidgetWrap, View):
         self.scrollable = FixedWidthScrollBar(self.list_box, trough_char="│")
         self._last_mouse_location = None
         self._columns = 0
+        self._last_rendered_size = None
+        self._last_top_visible_row_key = None
+        self._last_focused_row_key = None
 
         View.__init__(self, name, state, stream_data)
         self.update_stream_data(stream_data)
@@ -515,6 +522,8 @@ class EventView(urwid.WidgetWrap, View):
             if not self.list_walker:
                 self.list_walker.append(self.create_empty_row())
 
+        self._last_top_visible_row_key = None
+        self._last_focused_row_key = None
         self._invalidate()
 
     def update_stream_data(self, stream_data: EventStreamData) -> None:
@@ -540,14 +549,19 @@ class EventView(urwid.WidgetWrap, View):
         for row_index, row in enumerate(self.iter_event_rows()):
             if newly_selected_row == row.name:
                 self.list_walker.set_focus(row_index)
+                self._emit_viewport_change_if_needed()
                 return
 
     def has_focus(self) -> bool:
         return self.list_walker.get_focus()[0] is not None
 
-    def focused_row(self) -> tuple[RowType, str]:
+    def focused_row(self) -> tuple[RowType, str | int]:
         rowwidget, _ = self.list_walker.get_focus()
         return rowwidget.row_id()
+
+    def focused_row_key(self) -> str | int | None:
+        row_type, row_key = self.focused_row()
+        return None if row_type is RowType.RESOURCE_BASE else row_key
 
     def focused_time_range(self, all_views: bool = False) -> tuple[int, int]:
         rowwidget, _ = self.list_walker.get_focus()
@@ -558,6 +572,83 @@ class EventView(urwid.WidgetWrap, View):
     def center_column(self, maxcol: int | None = None) -> int:
         maxcol = maxcol or self._columns
         return self.state.column_header_width + round((maxcol - self.state.column_header_width) / 2)
+
+    def _visible_top_position(self) -> int | None:
+        if self._last_rendered_size is None or len(self.list_box.body) == 0:
+            return None
+
+        middle, top, _bottom = self.list_box.calculate_visible(self._last_rendered_size, self.has_focus())
+        focus_offset, _focus_inset = self.list_box.get_focus_offset_inset(self._last_rendered_size)
+        if focus_offset == 0 or top.trim > 0:
+            return middle.focus_pos
+        if top.fill:
+            return top.fill[-1].position
+        return middle.focus_pos
+
+    def top_visible_row_key(self) -> str | int | None:
+        position = self._visible_top_position()
+        if position is None:
+            return None
+
+        row_type, row_key = self.list_box.body[position].row_id()
+        return None if row_type is RowType.RESOURCE_BASE else row_key
+
+    def visible_row_keys(self) -> list[str | int]:
+        if self._last_rendered_size is None or len(self.list_box.body) == 0:
+            return []
+
+        middle, top, bottom = self.list_box.calculate_visible(self._last_rendered_size, self.has_focus())
+        positions = []
+        positions.extend(item.position for item in reversed(top.fill))
+        positions.append(middle.focus_pos)
+        positions.extend(item.position for item in bottom.fill)
+
+        visible_keys = []
+        seen = set()
+        for position in positions:
+            row_type, row_key = self.list_box.body[position].row_id()
+            if row_type is RowType.RESOURCE_BASE or row_key in seen:
+                continue
+            visible_keys.append(row_key)
+            seen.add(row_key)
+        return visible_keys
+
+    def scroll_row_to_top(self, row_key: str | int) -> bool:
+        position = None
+        for row_position in range(len(self.list_box.body)):
+            row_type, candidate_key = self.list_box.body[row_position].row_id()
+            if row_type is RowType.EVENT and candidate_key == row_key:
+                position = row_position
+                break
+
+        if position is None:
+            return False
+
+        self.list_box.set_focus(position)
+        self.list_box.set_focus_valign("top")
+
+        self._emit_focus_change_if_needed(force=True)
+        self._emit_viewport_change_if_needed(force=True)
+        self._invalidate()
+        return True
+
+    def _emit_viewport_change_if_needed(self, force: bool = False):
+        if self.on_viewport_change is None:
+            return
+
+        top_row_key = self.top_visible_row_key()
+        if force or top_row_key != self._last_top_visible_row_key:
+            self._last_top_visible_row_key = top_row_key
+            self.on_viewport_change(self, top_row_key)
+
+    def _emit_focus_change_if_needed(self, force: bool = False):
+        if self.on_focus_row_change is None:
+            return
+
+        focused_row_key = self.focused_row_key()
+        if force or focused_row_key != self._last_focused_row_key:
+            self._last_focused_row_key = focused_row_key
+            self.on_focus_row_change(self, focused_row_key)
 
     def _shift_focus(self, size: tuple[int, int], row_translation: int) -> bool:
         (maxcol, max_inset) = size
@@ -618,9 +709,14 @@ class EventView(urwid.WidgetWrap, View):
             if mouse_diff[1] != 0:
                 self._shift_focus(size, -mouse_diff[1])
 
+            self._emit_focus_change_if_needed()
+            self._emit_viewport_change_if_needed()
             return True
 
-        return self._w.mouse_event(size, event, button, col, row, focus)
+        handled = self._w.mouse_event(size, event, button, col, row, focus)
+        self._emit_focus_change_if_needed()
+        self._emit_viewport_change_if_needed()
+        return handled
 
     def keypress(
         self,
@@ -647,6 +743,8 @@ class EventView(urwid.WidgetWrap, View):
         # keypresses
         key = self._w.keypress(size, key)
         if key is None:
+            self._emit_focus_change_if_needed()
+            self._emit_viewport_change_if_needed()
             return None
 
         handled = False
@@ -683,6 +781,8 @@ class EventView(urwid.WidgetWrap, View):
             handled = True
 
         if handled:
+            self._emit_focus_change_if_needed()
+            self._emit_viewport_change_if_needed()
             return None
 
         return key
@@ -691,7 +791,11 @@ class EventView(urwid.WidgetWrap, View):
         if focus:
             super().update_focus()
         self._columns = size[0]
-        return super().render(size, focus=focus)
+        self._last_rendered_size = size
+        canvas = super().render(size, focus=focus)
+        self._emit_focus_change_if_needed()
+        self._emit_viewport_change_if_needed()
+        return canvas
 
 
 class RowViews(urwid.WidgetWrap, Views):
