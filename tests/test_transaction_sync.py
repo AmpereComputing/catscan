@@ -3,6 +3,7 @@
 
 import unittest
 from fractions import Fraction
+from types import SimpleNamespace
 
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
@@ -38,8 +39,11 @@ class Args:
 class DummyCommitSyncer:
     def __init__(self, *, other_commit_index=None, other_pushout_index=None):
         self.syncing = True
-        self.other_commit_index = other_commit_index or {}
-        self.other_pushout_index = other_pushout_index or {}
+        self.other = SimpleNamespace(
+            commit_index=other_commit_index or {},
+            pushout_index=other_pushout_index or {},
+            column_header_width=0,
+        )
         self.sent = []
         self.failure_message = None
 

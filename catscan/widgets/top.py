@@ -120,7 +120,7 @@ class Top(urwid.widget.Widget):
 
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
-        self.commit_sync_view_mode = "transaction" if args.view == DataView.TRANSACTIONS else "resource"
+        self.commit_sync_view_mode = DataView.TRANSACTIONS if args.view == DataView.TRANSACTIONS else DataView.RESOURCE
         self.commit_sync_index = {}
         self.transaction_row_commit_candidates = {}
         self.commit_inum_to_transaction_row = {}
@@ -1004,7 +1004,7 @@ class Top(urwid.widget.Widget):
             self.add_message(f"  {row.decode()}")
 
     def start_commit_sync(self) -> None:
-        if self.commit_sync_view_mode == "resource":
+        if self.commit_sync_view_mode == DataView.RESOURCE:
             self.saved_stream_data = self.stream_data
 
             pushout_events = self.commit_syncer.generate_commit_pushout_events(
@@ -1021,7 +1021,7 @@ class Top(urwid.widget.Widget):
 
             self.update_stream_data(
                 new_stream_data,
-                external_column_width=self.commit_syncer.other_column_header_width,
+                external_column_width=self.commit_syncer.other.column_header_width,
                 zoom_to_extents=False,
             )
 
@@ -1052,13 +1052,13 @@ class Top(urwid.widget.Widget):
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
-        if self.commit_sync_view_mode == "transaction":
+        if self.commit_sync_view_mode == DataView.TRANSACTIONS:
             transaction_row_key = transaction_row_key or self._transaction_view.top_visible_row_key()
             if transaction_row_key is None:
                 logging.info("Did not send transaction-row sync because no transaction row is visible or focused")
                 return
 
-            other_inums = set(self.commit_syncer.other_commit_index) | set(self.commit_syncer.other_pushout_index)
+            other_inums = set(self.commit_syncer.other.commit_index) | set(self.commit_syncer.other.pushout_index)
             for anchor_inum in self.transaction_row_commit_candidates.get(transaction_row_key, []):
                 if anchor_inum in other_inums:
                     self.commit_syncer.send(
@@ -1089,7 +1089,7 @@ class Top(urwid.widget.Widget):
         # If the commit we initially chose to synchronize on isn't present in
         # the other event stream, try a few subsequent commits in case we can
         # find one that is
-        other_pushout_index = self.commit_syncer.other_pushout_index
+        other_pushout_index = self.commit_syncer.other.pushout_index
         closest_inum = closest_instruction_commit.data[self.commit_sync_data_name]
         if closest_inum not in other_pushout_index or closest_inum not in self.pushout_index:
             for _ in range(20):
@@ -1154,7 +1154,7 @@ class Top(urwid.widget.Widget):
         )
 
     def on_viewport_change(self, view: EventView, _top_row_key) -> None:
-        if self.commit_sync_view_mode != "transaction":
+        if self.commit_sync_view_mode != DataView.TRANSACTIONS:
             return
 
         if view is not self._transaction_view or not self._transaction_view.has_focus():
@@ -1166,7 +1166,7 @@ class Top(urwid.widget.Widget):
         self.send_commit_sync()
 
     def on_focus_row_change(self, view: EventView, focused_row_key: str | int | None) -> None:
-        if self.commit_sync_view_mode != "transaction":
+        if self.commit_sync_view_mode != DataView.TRANSACTIONS:
             return
 
         if view is not self._transaction_view or not self._transaction_view.has_focus():

@@ -7,6 +7,7 @@ import unittest
 from fractions import Fraction
 
 from catscan.commit_sync import *
+from catscan.data import DataView
 
 
 class TestCommitSync(unittest.TestCase):
@@ -177,8 +178,8 @@ class TestCommitSync(unittest.TestCase):
         syncer.initialized = True
         syncer.stopped = False
         syncer.outgoing = object()
-        syncer.my_pushout_index = {10: 8, 11: 16}
-        syncer.other_pushout_index = {10: 2, 11: 4}
+        syncer.my.pushout_index = {10: 8, 11: 16}
+        syncer.other.pushout_index = {10: 2, 11: 4}
 
         sync_state = CommitSyncState(
             inum=10,
@@ -211,14 +212,14 @@ class TestCommitSyncHandshake(unittest.TestCase):
                 lambda: started_callback("first"),
                 lambda: stopped_callback("first"),
                 lambda _state: None,
-                view_mode="resource",
+                view_mode=DataView.RESOURCE,
             )
             second_syncer = CommitSyncer(
                 tmpfile.name,
                 lambda: started_callback("second"),
                 lambda: stopped_callback("second"),
                 lambda _state: None,
-                view_mode="transaction",
+                view_mode=DataView.TRANSACTIONS,
             )
             first_syncer.start(None)
             second_syncer.start(None)
