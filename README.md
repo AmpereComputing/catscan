@@ -149,7 +149,7 @@ double left click        | jump to next event in empty row
 
 Like
 [vim](https://stackoverflow.com/questions/11828270/how-do-i-exit-vim#11828573),
-you exit catscan by entering `ZZ`, or by entering `:q` or `:quit` followed by the ENTER key!
+you exit catscan by typing `ZZ`, or by entering the `:q` or `:quit` commands followed by the ENTER key!
 
 ### Selecting events
 
