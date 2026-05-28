@@ -50,6 +50,7 @@ class ACTIONS(StrEnum):
     ZOOM_IN = "Zoom in (fewer cycles per character) "
     ZOOM_OUT = "Zoom out (more cycles per character) "
     ZOOM_FIT_FOCUSED = "Zoom focused row so all events fit on the screen"
+    QUIT = "Quit catscan"
     PAN = "Drag movement"
     SEARCH = "Begin searching"
     COMMAND = "Begin entering a command"
@@ -115,6 +116,7 @@ action_keypresses = {
     ACTIONS.ZOOM_IN: ("+",),
     ACTIONS.ZOOM_OUT: ("-",),
     ACTIONS.ZOOM_FIT_FOCUSED: ("=-=",),
+    ACTIONS.QUIT: ("Z-Z",),
     ACTIONS.SEARCH: ("/",),
     ACTIONS.COMMAND: (":",),
     ACTIONS.SEARCH_NEXT: ("n",),

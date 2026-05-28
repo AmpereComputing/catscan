@@ -100,6 +100,7 @@ Key sequences/commands | Description
 `+`/`-`                 | zoom in/out
 `gg`/`G`                | go to first/last event row
 `?`                     | display help output (alias of `:help`)
+`ZZ`                    | exit catscan
 `ESCAPE`                | close popup, sidebar, or in-progress command/search
 `CTRL-b`/`CTRL-f`       | full page up/down
 `CTRL-u`/`CTRL-d`       | half page up/down
@@ -148,7 +149,7 @@ double left click        | jump to next event in empty row
 
 Like
 [vim](https://stackoverflow.com/questions/11828270/how-do-i-exit-vim#11828573),
-you exit catscan by entering `:q` or `:quit` followed by the ENTER key!
+you exit catscan by typing `ZZ`, or by entering the `:q` or `:quit` commands followed by the ENTER key!
 
 ### Selecting events
 

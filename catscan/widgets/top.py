@@ -1104,6 +1104,11 @@ class Top(urwid.widget.Widget):
 
         return True
 
+    def exit(self):
+        if self.commit_syncer:
+            self.commit_syncer.stop()
+        raise urwid.ExitMainLoop()
+
     def command(self, command_and_args: str) -> bool:
         self.frame.set_focus("body")
 
@@ -1117,9 +1122,7 @@ class Top(urwid.widget.Widget):
             return False
 
         if command in ("q", "Q", Commands.QUIT, "exit"):
-            if self.commit_syncer:
-                self.commit_syncer.stop()
-            raise urwid.ExitMainLoop()
+            self.exit()
 
         cmd = command_definitions.get(command)
         if cmd is not None:
@@ -1511,6 +1514,8 @@ class Top(urwid.widget.Widget):
             if not all(t == 0 for t in time_range):
                 self.go_to_time_range(*time_range)
             ret = None
+        elif ret in action_keypresses[ACTIONS.QUIT]:
+            self.exit()
 
         if ret is None:
             self._invalidate()

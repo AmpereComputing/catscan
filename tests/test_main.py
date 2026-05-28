@@ -93,6 +93,9 @@ class TestMain(CatscanDataTest):
     def do(self, command_or_motion):
         self.screen.do(command_or_motion)
 
+    def press_key(self, top, key):
+        return top.keypress(self.screen.get_cols_rows(), key)
+
     def run_catscan(self, args, *steps: tuple[int, str]):
         top = setup(args, screen=self.screen)
 
@@ -119,3 +122,10 @@ class TestMain(CatscanDataTest):
     def test_help(self):
         out = self.run_catscan(self.args(), (1, "?"), (2, "q"))
         self.assertIn("Help / Input Mappings", out)
+
+    def test_quit_keybinding(self):
+        top = setup(self.args(), screen=self.screen)
+
+        self.assertEqual(self.press_key(top, "Z"), "Z")
+        with self.assertRaises(urwid.ExitMainLoop):
+            self.press_key(top, "Z")
