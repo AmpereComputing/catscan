@@ -9,7 +9,13 @@
 
 ## Testing
 
+Tests use `unittest`, and are run through `hatch` for dependencies. To run all tests:
+
     hatch test
+
+To run a specific test file:
+
+    hatch test -- -s tests -p <test file within "tests/">
 
 ## Formatting & Linting
 
