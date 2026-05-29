@@ -1125,9 +1125,6 @@ class Top(urwid.widget.Widget):
                 logging.info(f"Received transaction-row inum not in transaction-row index: {sync_state.inum}")
                 return
 
-            if transaction_row in self._transaction_view.visible_row_keys():
-                return
-
             self._suppress_transaction_commit_sync = True
             try:
                 self._transaction_view.scroll_row_to_top(transaction_row)

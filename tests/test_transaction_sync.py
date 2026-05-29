@@ -348,9 +348,8 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(receiver._transaction_view.focused_row()[1], self.txids[3])
         self.assertEqual(receiver._transaction_view.top_visible_row_key(), self.txids[3])
 
-    def test_inbound_visible_transaction_row_does_not_force_focus(self):
+    def test_inbound_visible_transaction_row_still_aligns_to_top(self):
         top = self.make_top(size=(120, 8))
-        original_focus = top._transaction_view.focused_row()[1]
 
         top.receive_commit_sync(
             CommitSyncState(
@@ -362,5 +361,4 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
             )
         )
 
-        self.assertIn(self.txids[3], top._transaction_view.visible_row_keys())
-        self.assertEqual(top._transaction_view.focused_row()[1], original_focus)
+        self.assertEqual(top._transaction_view.top_visible_row_key(), self.txids[3])
