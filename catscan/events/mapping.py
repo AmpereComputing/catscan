@@ -66,9 +66,7 @@ def value_map_abbreviation_spec(arg: str) -> "ValueMapAbbreviation":
         try:
             key = int(key_str, 0)
         except ValueError as exc:
-            raise argparse.ArgumentTypeError(
-                f"ValueMapAbbreviation map key '{key_str}' must be an integer"
-            ) from exc
+            raise argparse.ArgumentTypeError(f"ValueMapAbbreviation map key '{key_str}' must be an integer") from exc
         value_map[key] = mapped_value
 
     default = None
@@ -214,16 +212,24 @@ class CallableAbbreviation(DynamicAbbreviation):
     def generate(self, event: Event) -> str | None:
         raise Exception("Should be overridden")
 
+
 disassembly_architectures = {
-    'armv7': (capstone.CS_ARCH_ARM, capstone.CS_MODE_ARM),
-    'arm64': (capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM),
-    'x86_64': (capstone.CS_ARCH_X86, capstone.CS_MODE_64),
+    "armv7": (capstone.CS_ARCH_ARM, capstone.CS_MODE_ARM),
+    "arm64": (capstone.CS_ARCH_ARM64, capstone.CS_MODE_ARM),
+    "x86_64": (capstone.CS_ARCH_X86, capstone.CS_MODE_64),
 }
 
+
 class Mapper:
-    def __init__(self, event_groups=None, hex_args=None, inst_args=None,
-                 static_abbreviations=None, dynamic_abbreviations=None,
-                 instruction_arch="arm64"):
+    def __init__(
+        self,
+        event_groups=None,
+        hex_args=None,
+        inst_args=None,
+        static_abbreviations=None,
+        dynamic_abbreviations=None,
+        instruction_arch="arm64",
+    ):
         if event_groups:
             options = "|".join([f"({g})" for g in event_groups])
             self.event_groups = re.compile(f"(?P<prefix>{options})\\.(?P<tail>.*)")

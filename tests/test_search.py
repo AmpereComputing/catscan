@@ -26,7 +26,7 @@ class TestSearch(CatscanDataTest):
 
         writer.start_simulation()
         next_inum = 5
-        last_pc = 0x3fffc
+        last_pc = 0x3FFFC
         next_pc = 0x40000
 
         # Record the times of the instruction exec and commit events with PC's of
@@ -36,52 +36,60 @@ class TestSearch(CatscanDataTest):
 
         for time in range(10000, 20000, 500):
             fetch_tx = writer.begin_transaction(time=time)
-            writer.post_event(btb_lookup,
-                              time=time,
-                              transaction=fetch_tx,
-                              values={
-                                  predictor: "main_btb",
-                                  btb_hit: 0 if time == 15000 else 1,
-                              })
-            writer.post_event(icache_lookup,
-                              time=time+100,
-                              transaction=fetch_tx,
-                              values={
-                                  icache_hit: 0 if time == 15000 else 1,
-                              })
-            for inst_time in range(time+200, time+400, 25):
+            writer.post_event(
+                btb_lookup,
+                time=time,
+                transaction=fetch_tx,
+                values={
+                    predictor: "main_btb",
+                    btb_hit: 0 if time == 15000 else 1,
+                },
+            )
+            writer.post_event(
+                icache_lookup,
+                time=time + 100,
+                transaction=fetch_tx,
+                values={
+                    icache_hit: 0 if time == 15000 else 1,
+                },
+            )
+            for inst_time in range(time + 200, time + 400, 25):
                 inst_tx = writer.begin_transaction(time=inst_time, parent=fetch_tx)
-                writer.post_event(inst_exec,
-                                  time=inst_time,
-                                  transaction=inst_tx,
-                                  values={
-                                      inum: next_inum,
-                                      program_counter: next_pc,
-                                      prev_program_counter: last_pc,
-                                  })
-                writer.post_event(inst_commit,
-                                  time=inst_time+2,
-                                  transaction=inst_tx,
-                                  values={
-                                      inum: next_inum,
-                                      program_counter: next_pc,
-                                      prev_program_counter: last_pc,
-                                  })
+                writer.post_event(
+                    inst_exec,
+                    time=inst_time,
+                    transaction=inst_tx,
+                    values={
+                        inum: next_inum,
+                        program_counter: next_pc,
+                        prev_program_counter: last_pc,
+                    },
+                )
+                writer.post_event(
+                    inst_commit,
+                    time=inst_time + 2,
+                    transaction=inst_tx,
+                    values={
+                        inum: next_inum,
+                        program_counter: next_pc,
+                        prev_program_counter: last_pc,
+                    },
+                )
                 if next_pc == 0x4001C:
                     cls.exact_match_instruction_times.append(inst_time)
-                    cls.exact_match_instruction_times.append(inst_time+2)
+                    cls.exact_match_instruction_times.append(inst_time + 2)
                 if next_pc in {0x40018, 0x4001C}:
-                    cls.filtered_match_instruction_times.append(inst_time+2)
+                    cls.filtered_match_instruction_times.append(inst_time + 2)
                 last_pc = next_pc
                 next_inum += 1
                 next_pc = next_pc + 4 if next_pc < 0x40020 else 0x40010
         writer.close()
 
         events = [
-            'core.btb.lookup',
-            'core.icache.lookup',
-            'core.instruction_exec',
-            'core.instruction_commit',
+            "core.btb.lookup",
+            "core.icache.lookup",
+            "core.instruction_exec",
+            "core.instruction_commit",
         ]
         cls.set_event_stream_params(events=[trace_events.trace_spec(e) for e in events])
 
@@ -110,9 +118,9 @@ class TestSearch(CatscanDataTest):
         full_address_searcher = TextSearcher("0x4001C", None, None, False, hex_args_to_re(["program_counter"]))
         partial_address_searcher = TextSearcher("0x4001", None, None, False, hex_args_to_re(["program_counter"]))
 
-        inst_a = list(self.esd.event_rows["core.instruction_commit"][10227])[0] # pc = 0x40004
-        inst_b = list(self.esd.event_rows["core.instruction_commit"][10302])[0] # pc = 0x40010
-        inst_c = list(self.esd.event_rows["core.instruction_commit"][10377])[0] # pc = 0x4001C
+        inst_a = list(self.esd.event_rows["core.instruction_commit"][10227])[0]  # pc = 0x40004
+        inst_b = list(self.esd.event_rows["core.instruction_commit"][10302])[0]  # pc = 0x40010
+        inst_c = list(self.esd.event_rows["core.instruction_commit"][10377])[0]  # pc = 0x4001C
 
         # Only C matches, because its program_counter is 0x4001C exactly
         self.assertFalse(full_address_searcher.match(inst_a))
@@ -129,9 +137,9 @@ class TestSearch(CatscanDataTest):
         address_searcher = IntSearcher(0x4001C, None, None, None)
         masked_address_searcher = IntSearcher(0x4001C, None, None, 0xFFFF0)
 
-        inst_a = list(self.esd.event_rows["core.instruction_commit"][10227])[0] # pc = 0x40004
-        inst_b = list(self.esd.event_rows["core.instruction_commit"][10302])[0] # pc = 0x40010
-        inst_c = list(self.esd.event_rows["core.instruction_commit"][10377])[0] # pc = 0x4001C
+        inst_a = list(self.esd.event_rows["core.instruction_commit"][10227])[0]  # pc = 0x40004
+        inst_b = list(self.esd.event_rows["core.instruction_commit"][10302])[0]  # pc = 0x40010
+        inst_c = list(self.esd.event_rows["core.instruction_commit"][10377])[0]  # pc = 0x4001C
 
         # Only C matches, because its program_counter is 0x4001C exactly
         self.assertFalse(address_searcher.match(inst_a))
@@ -238,16 +246,14 @@ class TestPerPeriodSearch(CatscanDataTest):
             [12],
         ]
 
-        pc = 0x64a88c0
+        pc = 0x64A88C0
         for fetch_grouping in cls.test_fetches:
             for fetch_time in fetch_grouping:
-                writer.post_event(fetch,
-                                  time=fetch_time,
-                                  values={program_counter: pc})
+                writer.post_event(fetch, time=fetch_time, values={program_counter: pc})
             pc += 4
         writer.close()
 
-        cls.set_event_stream_params(events=[trace_events.trace_spec('core.fetch')])
+        cls.set_event_stream_params(events=[trace_events.trace_spec("core.fetch")])
 
     def test_any(self):
         all_searcher = TextSearcher("*", None, None, False, hex_args_to_re(["program_counter"]))
@@ -273,5 +279,5 @@ class TestPerPeriodSearch(CatscanDataTest):
                     time_index += 1
 
                 self.assertEqual(
-                    searcher.match(list(self.esd.event_rows["core.fetch"][fetch_time])[time_index]),
-                    group_index >= 4)
+                    searcher.match(list(self.esd.event_rows["core.fetch"][fetch_time])[time_index]), group_index >= 4
+                )

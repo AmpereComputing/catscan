@@ -23,7 +23,9 @@ class TestEventRow(CatscanDataTest):
             writer.post_event(flush, time=ps)
         writer.close()
 
-        events = [trace_events.trace_spec('flush'),]
+        events = [
+            trace_events.trace_spec("flush"),
+        ]
         cls.set_event_stream_params(events=events)
 
     def test_unaligned_cycle_events(self):
