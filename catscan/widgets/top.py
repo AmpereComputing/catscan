@@ -1333,9 +1333,7 @@ class Top(urwid.widget.Widget):
             message = "Marks:\n"
             for mark, event in self.state.marked_events.items():
                 cycles = round(event.time / self.state.ps_per_cycle)
-                message += (
-                    f"\n {mark} : {event.abbrev} @ {cycles} cycles ({event.name})"
-                )
+                message += f"\n {mark} : {event.abbrev} @ {cycles} cycles ({event.name})"
             self.add_message(message)
         else:
             # If the command didn't match an actual command, try to navigate to
