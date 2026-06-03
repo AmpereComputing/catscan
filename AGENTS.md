@@ -55,3 +55,7 @@ be a comment indicating so, in the following format:
 Comments can be grouped semantically by block/function/class/file, etc.
 Per-line labeling is *not* required. Only add a comment if a large amount of
 code is generated from scratch.
+
+`MODEL_VERSION` is the most specific model identifier exposed by the runtime
+(including reasoning level). If only a partial identifier is available, use
+that partial identifier as-is. Do not guess missing version details.
