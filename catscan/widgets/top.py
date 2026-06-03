@@ -120,10 +120,10 @@ class Top(urwid.widget.Widget):
 
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
-        self.commit_sync_view_mode = DataView.TRANSACTIONS if args.view == DataView.TRANSACTIONS else DataView.RESOURCE
+        self.commit_sync_view_mode = args.view
         self.commit_sync_index = {}
         self.transaction_row_commit_candidates = {}
-        self.commit_inum_to_transaction_row = {}
+        self.commit_sync_index_to_transaction_row = {}
         self.commit_syncer = None
         self._suppress_transaction_commit_sync = False
 
@@ -475,22 +475,23 @@ class Top(urwid.widget.Widget):
             self.commit_sync_index = {}
             for transaction_row in self.stream_data.transaction_event_rows.values():
                 for event in transaction_row[:]:
-                    if self.commit_sync_data_name in event.data:
+                    if event.name == self.commit_sync_event and self.commit_sync_data_name in event.data:
                         self.commit_sync_index[event.data[self.commit_sync_data_name]] = event.time
 
         self.pushout_index = build_pushout_index(self.commit_sync_index, ps_per_cycle)
 
-        self.transaction_row_commit_candidates = {}
-        self.commit_inum_to_transaction_row = {}
-        for txid, transaction_row in self.stream_data.transaction_event_rows.items():
-            candidates = []
-            for event in transaction_row[:]:
-                if self.commit_sync_data_name in event.data:
-                    inum = event.data[self.commit_sync_data_name]
-                    candidates.append(inum)
-                    self.commit_inum_to_transaction_row[inum] = txid
-            if candidates:
-                self.transaction_row_commit_candidates[txid] = candidates
+        if self.commit_sync_view_mode == DataView.TRANSACTIONS:
+            self.transaction_row_commit_candidates = {}
+            self.commit_sync_index_to_transaction_row = {}
+            for txid, transaction_row in self.stream_data.transaction_event_rows.items():
+                candidates = []
+                for event in transaction_row[:]:
+                    if self.commit_sync_data_name in event.data:
+                        sync_index = event.data[self.commit_sync_data_name]
+                        candidates.append(sync_index)
+                        self.commit_sync_index_to_transaction_row[sync_index] = txid
+                if candidates:
+                    self.transaction_row_commit_candidates[txid] = candidates
 
         self.time_header.update_stream_data(stream_data)
         self.view_rows.update_stream_data(stream_data)
@@ -518,8 +519,8 @@ class Top(urwid.widget.Widget):
         irregularities in alignment of the display, and flow the new state out
         to any children widgets which need it.
 
-        If inum sync is enabled, this also handles sending an update to the
-        connected sibling catscan process with our current inum-based
+        If sync_index sync is enabled, this also handles sending an update to the
+        connected sibling catscan process with our current sync_index-based
         'horizontal' position in time (but avoid doing this when this update is
         the result of another process sending us theirs)
         """
@@ -1058,12 +1059,14 @@ class Top(urwid.widget.Widget):
                 logging.info("Did not send transaction-row sync because no transaction row is visible or focused")
                 return
 
-            other_inums = set(self.commit_syncer.other.commit_index) | set(self.commit_syncer.other.pushout_index)
-            for anchor_inum in self.transaction_row_commit_candidates.get(transaction_row_key, []):
-                if anchor_inum in other_inums:
+            other_sync_indexes = set(self.commit_syncer.other.commit_index) | set(
+                self.commit_syncer.other.pushout_index
+            )
+            for anchor_sync_index in self.transaction_row_commit_candidates.get(transaction_row_key, []):
+                if anchor_sync_index in other_sync_indexes:
                     self.commit_syncer.send(
                         CommitSyncState(
-                            inum=anchor_inum,
+                            sync_index=anchor_sync_index,
                             cycles_per_char=self.state.cycles_per_char,
                             expand_rows=self.state.expand_rows,
                             chars_rel_to_start=0,
@@ -1090,15 +1093,15 @@ class Top(urwid.widget.Widget):
         # the other event stream, try a few subsequent commits in case we can
         # find one that is
         other_pushout_index = self.commit_syncer.other.pushout_index
-        closest_inum = closest_instruction_commit.data[self.commit_sync_data_name]
-        if closest_inum not in other_pushout_index or closest_inum not in self.pushout_index:
+        closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
+        if closest_sync_index not in other_pushout_index or closest_sync_index not in self.pushout_index:
             for _ in range(20):
                 if next_commit := self.stream_data.event_rows[self.commit_sync_event].oldest_younger(
                     closest_instruction_commit
                 ):
                     closest_instruction_commit = next_commit
-                    closest_inum = closest_instruction_commit.data[self.commit_sync_data_name]
-                    if closest_inum in other_pushout_index and closest_inum in self.pushout_index:
+                    closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
+                    if closest_sync_index in other_pushout_index and closest_sync_index in self.pushout_index:
                         break
                 else:
                     break
@@ -1110,7 +1113,7 @@ class Top(urwid.widget.Widget):
             / self.state.ps_per_cycle
         )
         sync_state = CommitSyncState(
-            inum=closest_instruction_commit.data[self.commit_sync_data_name],
+            sync_index=closest_instruction_commit.data[self.commit_sync_data_name],
             cycles_per_char=self.state.cycles_per_char,
             expand_rows=self.state.expand_rows,
             chars_rel_to_start=offset_chars,
@@ -1120,9 +1123,11 @@ class Top(urwid.widget.Widget):
 
     def receive_commit_sync(self, sync_state: CommitSyncState):
         if sync_state.mode == "transaction_row":
-            transaction_row = self.commit_inum_to_transaction_row.get(sync_state.inum)
+            transaction_row = self.commit_sync_index_to_transaction_row.get(sync_state.sync_index)
             if transaction_row is None:
-                logging.info(f"Received transaction-row inum not in transaction-row index: {sync_state.inum}")
+                logging.info(
+                    f"Received transaction-row sync_index not in transaction-row index: {sync_state.sync_index}"
+                )
                 return
 
             self._suppress_transaction_commit_sync = True
@@ -1132,15 +1137,15 @@ class Top(urwid.widget.Widget):
                 self._suppress_transaction_commit_sync = False
             return
 
-        if sync_state.inum not in self.commit_sync_index:
-            logging.info(f"Received inum not in inum index: {sync_state.inum}")
+        if sync_state.sync_index not in self.commit_sync_index:
+            logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
             return
 
         # Calculate the time at the left-hand side of the screen based on our
-        # scaling of the received offset from the reference inum
-        inum_commit_ps = self.commit_sync_index[sync_state.inum]
+        # scaling of the received offset from the reference sync_index
+        sync_index_commit_ps = self.commit_sync_index[sync_state.sync_index]
         new_start_ps = round(
-            inum_commit_ps + sync_state.chars_rel_to_start * sync_state.cycles_per_char * self.state.ps_per_cycle
+            sync_index_commit_ps + sync_state.chars_rel_to_start * sync_state.cycles_per_char * self.state.ps_per_cycle
         )
 
         self.update_state(

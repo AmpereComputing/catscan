@@ -96,22 +96,26 @@ class TestCommitSync(unittest.TestCase):
 
     def test_send_receive_messages(self):
         self.first_syncer.send(
-            CommitSyncState(inum=42, cycles_per_char=Fraction(1, 16), expand_rows=False, chars_rel_to_start=-47)
+            CommitSyncState(sync_index=42, cycles_per_char=Fraction(1, 16), expand_rows=False, chars_rel_to_start=-47)
         )
 
         # Alternate sending a few sync messages each direction
         for i in range(3):
             self.first_syncer.send(
-                CommitSyncState(inum=i, cycles_per_char=Fraction(2**i), expand_rows=True, chars_rel_to_start=10 - i)
+                CommitSyncState(
+                    sync_index=i, cycles_per_char=Fraction(2**i), expand_rows=True, chars_rel_to_start=10 - i
+                )
             )
             self.second_syncer.send(
-                CommitSyncState(inum=i * 3, cycles_per_char=Fraction(8**i), expand_rows=True, chars_rel_to_start=30 + i)
+                CommitSyncState(
+                    sync_index=i * 3, cycles_per_char=Fraction(8**i), expand_rows=True, chars_rel_to_start=30 + i
+                )
             )
             self.wait_for_messages(first_messages=i + 1, second_messages=i + 2)
 
-        # Make sure the inums received match what was sent
-        self.assertEqual([m.inum for m in self.first_incoming_messages], [0, 3, 6])
-        self.assertEqual([m.inum for m in self.second_incoming_messages], [42, 0, 1, 2])
+        # Make sure the sync indexes received match what was sent
+        self.assertEqual([m.sync_index for m in self.first_incoming_messages], [0, 3, 6])
+        self.assertEqual([m.sync_index for m in self.second_incoming_messages], [42, 0, 1, 2])
 
         # And the other fields, too
         self.assertEqual(self.second_incoming_messages[0].cycles_per_char, Fraction(1, 16))
@@ -121,7 +125,7 @@ class TestCommitSync(unittest.TestCase):
 
     def test_stop(self):
         self.first_syncer.send(
-            CommitSyncState(inum=42, cycles_per_char=Fraction(1, 16), expand_rows=True, chars_rel_to_start=-47)
+            CommitSyncState(sync_index=42, cycles_per_char=Fraction(1, 16), expand_rows=True, chars_rel_to_start=-47)
         )
 
         self.first_syncer.stop()
@@ -130,7 +134,9 @@ class TestCommitSync(unittest.TestCase):
         # This message should be dropped after logging the stopped sync.
         with self.assertLogs(level="WARNING") as logs:
             self.second_syncer.send(
-                CommitSyncState(inum=49, cycles_per_char=Fraction(32, 1), expand_rows=True, chars_rel_to_start=109)
+                CommitSyncState(
+                    sync_index=49, cycles_per_char=Fraction(32, 1), expand_rows=True, chars_rel_to_start=109
+                )
             )
         self.assertIn("Dropping to-send commit sync message", logs.output[0])
 
@@ -138,7 +144,7 @@ class TestCommitSync(unittest.TestCase):
         self.assertTrue(self.second_stopped)
 
         self.wait_for_messages(first_messages=0, second_messages=1)
-        self.assertEqual(self.second_incoming_messages[0].inum, 42)
+        self.assertEqual(self.second_incoming_messages[0].sync_index, 42)
 
         # Ensure we never received the message sent after the FIFO was stopped
         time.sleep(2)
@@ -150,7 +156,7 @@ class TestCommitSync(unittest.TestCase):
 
         for mode in ("time", "transaction_row"):
             state = CommitSyncState(
-                inum=42,
+                sync_index=42,
                 cycles_per_char=Fraction(3, 2),
                 expand_rows=True,
                 chars_rel_to_start=-7,
@@ -162,12 +168,12 @@ class TestCommitSync(unittest.TestCase):
         decoder = CommitSyncStateJSONDecoder()
 
         state = decoder.decode(
-            '{"inum": 9, "cycles_per_char": {"numerator": 5, "denominator": 4}, '
+            '{"sync_index": 9, "cycles_per_char": {"numerator": 5, "denominator": 4}, '
             '"expand_rows": false, "chars_rel_to_start": 11}'
         )
 
         self.assertEqual(state.mode, "time")
-        self.assertEqual(state.inum, 9)
+        self.assertEqual(state.sync_index, 9)
         self.assertEqual(state.cycles_per_char, Fraction(5, 4))
 
     def test_transaction_row_receive_bypasses_pushout_scaling(self):
@@ -182,7 +188,7 @@ class TestCommitSync(unittest.TestCase):
         syncer.other.pushout_index = {10: 2, 11: 4}
 
         sync_state = CommitSyncState(
-            inum=10,
+            sync_index=10,
             cycles_per_char=Fraction(1, 1),
             expand_rows=False,
             chars_rel_to_start=-9,

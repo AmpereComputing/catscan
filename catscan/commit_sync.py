@@ -33,9 +33,9 @@ def build_commit_index(event_row: EventData, data_name: str) -> dict[int, int]:
 
 def build_pushout_index(commit_index: dict[int, int], ps_per_cycle: int) -> dict[int, int]:
     pushout_index = {}
-    for inum, commit_time in commit_index.items():
-        if inum - 1 in commit_index:
-            pushout_index[inum] = (commit_time - commit_index[inum - 1]) // ps_per_cycle
+    for sync_index, commit_time in commit_index.items():
+        if sync_index - 1 in commit_index:
+            pushout_index[sync_index] = (commit_time - commit_index[sync_index - 1]) // ps_per_cycle
     return pushout_index
 
 
@@ -57,13 +57,13 @@ REFRESH_RATE = 1 / 60  # 60Hz
 
 
 class PushoutEvent(CatscanEvent):
-    def __init__(self, name: str, _id: int, time: int, txid: int, inum: int, my_pushout: int, other_pushout: int):
+    def __init__(self, name: str, _id: int, time: int, txid: int, sync_index: int, my_pushout: int, other_pushout: int):
         self.id = _id
         self.time = time
         self.name = name
         self.data = {
             "txid": txid,
-            "inum": inum,
+            "sync_index": sync_index,
             "pushout": my_pushout,
             "other_pushout": other_pushout,
             "excess_pushout": my_pushout - other_pushout,
@@ -71,10 +71,10 @@ class PushoutEvent(CatscanEvent):
 
 
 class CommitSyncState(NamedTuple):
-    inum: int  # The inum whose position we are syncing on
+    sync_index: int  # The sync_index whose position we are syncing on
     cycles_per_char: Fraction  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
     expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
-    chars_rel_to_start: int  # The number of characters right-of-center the referenced inum is
+    chars_rel_to_start: int  # The number of characters right-of-center the referenced sync_index is
     mode: Literal["time", "transaction_row"] = "time"
 
 
@@ -104,7 +104,7 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
     def decode(self, json_string: str) -> CommitSyncState:
         data = super().decode(json_string)
         return CommitSyncState(
-            inum=data["inum"],
+            sync_index=data["sync_index"],
             cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
             expand_rows=data["expand_rows"],
             chars_rel_to_start=data["chars_rel_to_start"],
@@ -263,10 +263,10 @@ class CommitSyncer:
                     from_json = json.load(init_file)
                     self.other.column_header_width = from_json["column_header_width"]
                     self.other.commit_index = {
-                        int(inum): time for inum, time in from_json.get("commit_index", {}).items()
+                        int(sync_index): time for sync_index, time in from_json.get("commit_index", {}).items()
                     }
                     self.other.pushout_index = {
-                        int(inum): pushout for inum, pushout in from_json["pushout_index"].items()
+                        int(sync_index): pushout for sync_index, pushout in from_json["pushout_index"].items()
                     }
                     self.other.view_mode = DataView(from_json.get("view_mode", DataView.RESOURCE))
                 break
@@ -305,34 +305,34 @@ class CommitSyncer:
         next_event_id: int,
         ps_per_cycle: int,
     ) -> list[Event]:
-        # Generate a dictionary keyed by inum for each commit which shows
+        # Generate a dictionary keyed by sync_index for each commit which shows
         # "real" excess commit pushout. We don't count commit pushout as "real"
         # if it is a single cycle and the previous nonzero pushout was -1
         # cycles, because this likely means the commits are just split across
         # cycles slightly differently.
-        min_inum = max(min(self.my.pushout_index.keys()), min(self.other.pushout_index.keys()))
-        max_inum = min(max(self.my.pushout_index.keys()), max(self.other.pushout_index.keys()))
+        min_sync_index = max(min(self.my.pushout_index.keys()), min(self.other.pushout_index.keys()))
+        max_sync_index = min(max(self.my.pushout_index.keys()), max(self.other.pushout_index.keys()))
 
         excess_pushout = {}
         cumulative_pushout_movement = {}
         last_pushout_difference = 0
         cumulative_pushout = 0
         cumulative_pushout_center = cumulative_pushout
-        for inum in range(min_inum, max_inum + 1):
+        for sync_index in range(min_sync_index, max_sync_index + 1):
             try:
-                diff = self.my.pushout_index[inum] - self.other.pushout_index[inum]
+                diff = self.my.pushout_index[sync_index] - self.other.pushout_index[sync_index]
             except KeyError:
                 continue
 
             if diff > 1 or (diff == 1 and last_pushout_difference != -1):
-                excess_pushout[inum] = diff
+                excess_pushout[sync_index] = diff
             if diff:
                 cumulative_pushout += diff
                 last_pushout_difference = diff
                 if cumulative_pushout < cumulative_pushout_center - CUMULATIVE_PUSHOUT_BOUNDS:
                     cumulative_pushout_center = cumulative_pushout + CUMULATIVE_PUSHOUT_BOUNDS
                 elif cumulative_pushout > cumulative_pushout_center + CUMULATIVE_PUSHOUT_BOUNDS:
-                    cumulative_pushout_movement[inum] = cumulative_pushout - (
+                    cumulative_pushout_movement[sync_index] = cumulative_pushout - (
                         cumulative_pushout_center + CUMULATIVE_PUSHOUT_BOUNDS
                     )
                     cumulative_pushout_center = cumulative_pushout - CUMULATIVE_PUSHOUT_BOUNDS
@@ -349,8 +349,8 @@ class CommitSyncer:
                     time,
                     commit_evt.data["txid"],
                     commit_evt.data[commit_sync_data_name],
-                    self.my.pushout_index[inum],
-                    self.other.pushout_index[inum],
+                    self.my.pushout_index[sync_index],
+                    self.other.pushout_index[sync_index],
                 )
                 next_event_id += 1
                 pushout_events.append(pushout_evt)
@@ -359,12 +359,12 @@ class CommitSyncer:
         for commit_evt in event_row[:]:
             if commit_sync_data_name not in commit_evt.data:
                 continue
-            inum = commit_evt.data[commit_sync_data_name]
-            if inum in excess_pushout:
-                gen_pushout_events(commit_evt, f"{group_prefix}.excess_commit_pushout", excess_pushout[inum])
-            if inum in cumulative_pushout_movement:
+            sync_index = commit_evt.data[commit_sync_data_name]
+            if sync_index in excess_pushout:
+                gen_pushout_events(commit_evt, f"{group_prefix}.excess_commit_pushout", excess_pushout[sync_index])
+            if sync_index in cumulative_pushout_movement:
                 gen_pushout_events(
-                    commit_evt, f"{group_prefix}.debounced_cumulative_pushout", cumulative_pushout_movement[inum]
+                    commit_evt, f"{group_prefix}.debounced_cumulative_pushout", cumulative_pushout_movement[sync_index]
                 )
 
         return pushout_events
@@ -410,8 +410,8 @@ class CommitSyncer:
             )
             return
 
-        inum_json = self.state_encoder.encode(sync_state)
-        self.outgoing.write(f"{inum_json}\n")
+        sync_index_json = self.state_encoder.encode(sync_state)
+        self.outgoing.write(f"{sync_index_json}\n")
         self.outgoing.flush()
 
     def receive(self, sync_state: CommitSyncState) -> None:
@@ -433,34 +433,34 @@ class CommitSyncer:
 
         # Scale the synced horizontal time based on the relative differences in
         # commit pushout to ensure smoother movements around transitions
-        # between the inum being synced against
-        if sync_state.chars_rel_to_start < 0 and sync_state.inum in self.my.pushout_index:
-            scalable_rel_chars = max(sync_state.chars_rel_to_start, -self.other.pushout_index[sync_state.inum])
+        # between the sync_index being synced against
+        if sync_state.chars_rel_to_start < 0 and sync_state.sync_index in self.my.pushout_index:
+            scalable_rel_chars = max(sync_state.chars_rel_to_start, -self.other.pushout_index[sync_state.sync_index])
             rel_chars = sync_state.chars_rel_to_start - scalable_rel_chars
             if scalable_rel_chars:
                 rel_chars += (
                     scalable_rel_chars
-                    * self.my.pushout_index[sync_state.inum]
-                    / self.other.pushout_index[sync_state.inum]
+                    * self.my.pushout_index[sync_state.sync_index]
+                    / self.other.pushout_index[sync_state.sync_index]
                 )
         elif (
             sync_state.chars_rel_to_start > 0
-            and sync_state.inum + 1 in self.my.pushout_index
-            and sync_state.inum + 1 in self.other.pushout_index
+            and sync_state.sync_index + 1 in self.my.pushout_index
+            and sync_state.sync_index + 1 in self.other.pushout_index
         ):
-            scalable_rel_chars = min(sync_state.chars_rel_to_start, self.other.pushout_index[sync_state.inum + 1])
+            scalable_rel_chars = min(sync_state.chars_rel_to_start, self.other.pushout_index[sync_state.sync_index + 1])
             rel_chars = sync_state.chars_rel_to_start - scalable_rel_chars
             if scalable_rel_chars:
                 rel_chars += (
                     scalable_rel_chars
-                    * self.my.pushout_index[sync_state.inum + 1]
-                    / self.other.pushout_index[sync_state.inum + 1]
+                    * self.my.pushout_index[sync_state.sync_index + 1]
+                    / self.other.pushout_index[sync_state.sync_index + 1]
                 )
         else:
             rel_chars = sync_state.chars_rel_to_start
 
         adjusted_sync_state = CommitSyncState(
-            inum=sync_state.inum,
+            sync_index=sync_state.sync_index,
             cycles_per_char=sync_state.cycles_per_char,
             expand_rows=sync_state.expand_rows,
             chars_rel_to_start=rel_chars,

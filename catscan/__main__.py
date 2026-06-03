@@ -15,6 +15,7 @@ import urwid
 from catscan import events
 from catscan.argument_parser import ArgumentParser
 from catscan.colors import palette
+from catscan.data import DataView
 from catscan.events import trace_events
 from catscan.events.mapping import (
     DynamicAbbreviation,
@@ -77,7 +78,9 @@ def parse_args() -> argparse.Namespace:
         const="",
         help='Cache a "pickled" version of this event stream, once loaded (supply path to override default)',
     )
-    parser.add_argument("--view", default="unspecified", help="type of view to generate")
+    parser.add_argument(
+        "--view", type=DataView, choices=list(DataView), default=DataView.RESOURCE, help="type of view to generate"
+    )
     parser.add_argument(
         "--onload-command",
         default=[],

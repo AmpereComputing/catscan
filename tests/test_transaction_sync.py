@@ -252,7 +252,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top.send_commit_sync()
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
-        self.assertEqual(top.commit_syncer.sent[0].inum, 20)
+        self.assertEqual(top.commit_syncer.sent[0].sync_index, 20)
         self.assertEqual(top.commit_syncer.sent[0].mode, "transaction_row")
 
     def test_selecting_visible_non_top_row_sends_focused_row_anchor(self):
@@ -262,7 +262,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top.make_selection(Selection(self.txids[3], view=top._transaction_view.name))
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
-        self.assertEqual(top.commit_syncer.sent[0].inum, 40)
+        self.assertEqual(top.commit_syncer.sent[0].sync_index, 40)
 
     def test_earliest_shared_commit_in_row_is_used(self):
         top = self.make_top()
@@ -272,7 +272,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top.send_commit_sync()
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
-        self.assertEqual(top.commit_syncer.sent[0].inum, 10)
+        self.assertEqual(top.commit_syncer.sent[0].sync_index, 10)
 
     def test_row_with_no_shared_commit_sends_nothing(self):
         top = self.make_top()
@@ -288,7 +288,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         top.receive_commit_sync(
             CommitSyncState(
-                inum=40,
+                sync_index=40,
                 cycles_per_char=Fraction(1, 1),
                 expand_rows=False,
                 chars_rel_to_start=0,
@@ -306,7 +306,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         top.receive_commit_sync(
             CommitSyncState(
-                inum=50,
+                sync_index=50,
                 cycles_per_char=Fraction(1, 8),
                 expand_rows=False,
                 chars_rel_to_start=17,
@@ -324,7 +324,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         top.receive_commit_sync(
             CommitSyncState(
-                inum=40,
+                sync_index=40,
                 cycles_per_char=Fraction(1, 1),
                 expand_rows=False,
                 chars_rel_to_start=0,
@@ -353,7 +353,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         top.receive_commit_sync(
             CommitSyncState(
-                inum=40,
+                sync_index=40,
                 cycles_per_char=Fraction(1, 1),
                 expand_rows=False,
                 chars_rel_to_start=0,
