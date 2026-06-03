@@ -63,5 +63,5 @@ class TransactionView(EventView):
         for i, row_name in enumerate(self.stream_data.transaction_event_rows.keys()):
             if newly_selected_row == row_name:
                 self.list_walker.set_focus(i)
-                self._emit_viewport_change_if_needed()
+                self._emit_position_change_notifications()
                 return

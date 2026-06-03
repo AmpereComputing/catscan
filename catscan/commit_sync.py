@@ -76,6 +76,7 @@ class CommitSyncState(NamedTuple):
     expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
     chars_rel_to_start: int  # The number of characters right-of-center the referenced sync_index is
     mode: Literal["time", "transaction_row"] = "time"
+    transaction_row_align: Literal["top", "bottom"] | None = None
 
 
 @dataclass
@@ -109,6 +110,7 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
             expand_rows=data["expand_rows"],
             chars_rel_to_start=data["chars_rel_to_start"],
             mode=data.get("mode", "time"),
+            transaction_row_align=data.get("transaction_row_align"),
         )
 
 
@@ -465,6 +467,7 @@ class CommitSyncer:
             expand_rows=sync_state.expand_rows,
             chars_rel_to_start=rel_chars,
             mode=sync_state.mode,
+            transaction_row_align=sync_state.transaction_row_align,
         )
 
         if self.main_loop is None:

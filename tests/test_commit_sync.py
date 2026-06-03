@@ -161,6 +161,7 @@ class TestCommitSync(unittest.TestCase):
                 expand_rows=True,
                 chars_rel_to_start=-7,
                 mode=mode,
+                transaction_row_align="bottom" if mode == "transaction_row" else None,
             )
             self.assertEqual(decoder.decode(encoder.encode(state)), state)
 
@@ -173,8 +174,20 @@ class TestCommitSync(unittest.TestCase):
         )
 
         self.assertEqual(state.mode, "time")
+        self.assertIsNone(state.transaction_row_align)
         self.assertEqual(state.sync_index, 9)
         self.assertEqual(state.cycles_per_char, Fraction(5, 4))
+
+    def test_state_json_decode_defaults_transaction_row_align_to_none(self):
+        decoder = CommitSyncStateJSONDecoder()
+
+        state = decoder.decode(
+            '{"sync_index": 9, "cycles_per_char": {"numerator": 5, "denominator": 4}, '
+            '"expand_rows": false, "chars_rel_to_start": 11, "mode": "transaction_row"}'
+        )
+
+        self.assertEqual(state.mode, "transaction_row")
+        self.assertIsNone(state.transaction_row_align)
 
     def test_transaction_row_receive_bypasses_pushout_scaling(self):
         received = []

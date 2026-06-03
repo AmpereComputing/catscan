@@ -126,6 +126,7 @@ class Top(urwid.widget.Widget):
         self.commit_sync_index_to_transaction_row = {}
         self.commit_syncer = None
         self._suppress_transaction_commit_sync = False
+        self._last_transaction_sync_signature = None
 
         self.loading_pct = 0
         self.loading_thread = None
@@ -483,6 +484,7 @@ class Top(urwid.widget.Widget):
         if self.commit_sync_view_mode == DataView.TRANSACTIONS:
             self.transaction_row_commit_candidates = {}
             self.commit_sync_index_to_transaction_row = {}
+            self._last_transaction_sync_signature = None
             for txid, transaction_row in self.stream_data.transaction_event_rows.items():
                 candidates = []
                 for event in transaction_row[:]:
@@ -1054,9 +1056,15 @@ class Top(urwid.widget.Widget):
             return
 
         if self.commit_sync_view_mode == DataView.TRANSACTIONS:
-            transaction_row_key = transaction_row_key or self._transaction_view.top_visible_row_key()
+            transaction_row_key = transaction_row_key or self._transaction_view.focused_row_key()
             if transaction_row_key is None:
                 logging.info("Did not send transaction-row sync because no transaction row is visible or focused")
+                return
+
+            transaction_row_align = self._transaction_view.transaction_sync_align()
+
+            sync_signature = (transaction_row_key, transaction_row_align)
+            if sync_signature == self._last_transaction_sync_signature:
                 return
 
             other_sync_indexes = set(self.commit_syncer.other.commit_index) | set(
@@ -1071,8 +1079,10 @@ class Top(urwid.widget.Widget):
                             expand_rows=self.state.expand_rows,
                             chars_rel_to_start=0,
                             mode="transaction_row",
+                            transaction_row_align=transaction_row_align,
                         )
                     )
+                    self._last_transaction_sync_signature = sync_signature
                     return
 
             logging.info(
@@ -1130,9 +1140,12 @@ class Top(urwid.widget.Widget):
                 )
                 return
 
+            if self._transaction_view.is_row_visible(transaction_row):
+                return
+
             self._suppress_transaction_commit_sync = True
             try:
-                self._transaction_view.scroll_row_to_top(transaction_row)
+                self._transaction_view.scroll_row_to_edge(transaction_row, sync_state.transaction_row_align or "top")
             finally:
                 self._suppress_transaction_commit_sync = False
             return
@@ -1384,7 +1397,9 @@ class Top(urwid.widget.Widget):
             if "stop" in args:
                 self.commit_syncer.stop()
                 self.commit_syncer = None
+                self._last_transaction_sync_signature = None
             else:
+                self._last_transaction_sync_signature = None
                 self.commit_syncer = CommitSyncer(
                     args["fifo_basename"],
                     self.start_commit_sync,
