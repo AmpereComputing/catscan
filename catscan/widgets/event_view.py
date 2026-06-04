@@ -4,7 +4,7 @@
 import logging
 import math
 from collections.abc import Callable, Iterable, Iterator
-from typing import Any
+from typing import Any, Literal
 
 import urwid
 from perf_streams.event_stream import Event
@@ -575,10 +575,10 @@ class EventView(urwid.WidgetWrap, View):
             return rowwidget.ed.start_time, rowwidget.ed.end_time
         return 0, 0
 
-    def last_vertical_direction(self) -> str | None:
+    def last_vertical_direction(self) -> Literal["up", "down"] | None:
         return self._last_vertical_direction
 
-    def transaction_sync_align(self) -> str | None:
+    def transaction_sync_align(self) -> Literal["top", "bottom"] | None:
         return self._pending_transaction_sync_align
 
     def _emit_position_change_notifications(self, force: bool = False) -> None:
@@ -641,7 +641,7 @@ class EventView(urwid.WidgetWrap, View):
     def is_row_visible(self, row_key: str | int) -> bool:
         return row_key in self.visible_row_keys()
 
-    def scroll_row_to_edge(self, row_key: str | int, align: str = "top") -> bool:
+    def scroll_row_to_edge(self, row_key: str | int, align: Literal["top", "bottom"] = "top") -> bool:
         position = self._event_row_position(row_key)
         if position is None:
             return False
@@ -656,7 +656,7 @@ class EventView(urwid.WidgetWrap, View):
     def scroll_row_to_top(self, row_key: str | int) -> bool:
         return self.scroll_row_to_edge(row_key, "top")
 
-    def _emit_viewport_change_if_needed(self, force: bool = False):
+    def _emit_viewport_change_if_needed(self, force: bool = False) -> None:
         if self.on_viewport_change is None:
             return
 
@@ -677,7 +677,7 @@ class EventView(urwid.WidgetWrap, View):
         else:
             self._last_top_visible_position = top_position
 
-    def _emit_focus_change_if_needed(self, force: bool = False):
+    def _emit_focus_change_if_needed(self, force: bool = False) -> None:
         if self.on_focus_row_change is None:
             return
 

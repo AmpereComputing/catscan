@@ -250,7 +250,7 @@ class Top(urwid.widget.Widget):
         return self._resource_view
 
     @property
-    def _transaction_view(self) -> EventView:
+    def _transaction_view(self) -> TransactionView:
         return self.view_rows[f"{DefaultViews.MAIN}.{DefaultViews.TRANSACTION}"]
 
     def _get_data_view_from_views(self, views: list[str] | None = None) -> EventView:
@@ -1131,7 +1131,7 @@ class Top(urwid.widget.Widget):
         )
         self.commit_syncer.send(sync_state)
 
-    def receive_commit_sync(self, sync_state: CommitSyncState):
+    def receive_commit_sync(self, sync_state: CommitSyncState) -> None:
         if sync_state.mode == "transaction_row":
             transaction_row = self.commit_sync_index_to_transaction_row.get(sync_state.sync_index)
             if transaction_row is None:
@@ -1168,7 +1168,7 @@ class Top(urwid.widget.Widget):
             external_sync=True,
         )
 
-    def on_viewport_change(self, view: EventView, _top_row_key) -> None:
+    def on_viewport_change(self, view: EventView, _top_row_key: str | int | None) -> None:
         if self.commit_sync_view_mode != DataView.TRANSACTIONS:
             return
 
