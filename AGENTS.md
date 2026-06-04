@@ -33,6 +33,9 @@ Most of these are enforced by CI in the PR, but specifically:
 
 * All tests must pass
 * Code must meet style/formatting guidelines
+* Python function signatures should use type annotations, although not required
+  in tests. Type annotations elsewhere (e.g. class members) can be helpful but
+  are not required.
 
 ## Labeling
 
