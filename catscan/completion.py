@@ -17,7 +17,6 @@ class FilteredSuggestions(ABC):
     @abstractmethod
     def suggestions(self) -> list[str]:
         """Suggestions for filtering."""
-        pass
 
     def fallback_suggestions(self) -> list[str]:
         """Fallback suggestions if none of the suggestions match."""
@@ -45,7 +44,7 @@ class FilteredSuggestions(ABC):
         filtered = self._filtered_suggestions
         if not filtered or self._current < 0:
             return self._original
-        elif self._current >= len(filtered):
+        if self._current >= len(filtered):
             return filtered[-1] if filtered else None
         return filtered[self._current]
 

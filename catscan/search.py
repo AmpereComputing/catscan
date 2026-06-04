@@ -6,8 +6,8 @@ from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Iterable
 from enum import StrEnum
+from re import Pattern
 from sys import maxsize
-from typing import Pattern
 
 from catscan.data import Event, EventStreamDataView
 from catscan.util import glob_to_pattern
@@ -54,7 +54,6 @@ class Searcher(ABC):
         """
         Returns True when an event matches this search
         """
-        pass
 
     @abstractmethod
     def field_match(self, name: str, field: int | str) -> bool:
@@ -62,7 +61,6 @@ class Searcher(ABC):
         Returns True when an event's field matches this search (presumes the
         event already was matched by match(), above
         """
-        pass
 
     @abstractmethod
     def __repr__(self):

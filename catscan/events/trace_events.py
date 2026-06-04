@@ -7,8 +7,8 @@ Classes to interact with events in Catscan
 
 import re
 from abc import ABC
+from collections.abc import Callable
 from itertools import chain
-from typing import Callable
 
 from perf_streams.event_stream import Event
 

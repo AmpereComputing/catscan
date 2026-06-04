@@ -2,8 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import textwrap
-from collections.abc import Iterable
-from typing import Callable
+from collections.abc import Callable, Iterable
 
 import urwid
 
@@ -120,7 +119,7 @@ class EventDetailDataText(urwid.widget.Widget):
 
         if len(self.key) <= self.split and maxcol - 2 - self.split >= len(self.value):
             return 1
-        elif len(self.key) + 1 <= maxcol and len(self.value) <= maxcol:
+        if len(self.key) + 1 <= maxcol and len(self.value) <= maxcol:
             return 2
         return len(self.line_wrapper.wrap(self.key + ":")) + len(self.line_wrapper.wrap(self.value))
 
@@ -247,8 +246,7 @@ class EventDetail(urwid.WidgetWrap):
             if self.hexargs_re.match(name):
                 if isinstance(value, str):
                     return name, hex(int(value, base=0))
-                else:
-                    return name, hex(value)
+                return name, hex(value)
 
             return item
 
@@ -271,8 +269,7 @@ class EventDetail(urwid.WidgetWrap):
                 # remove duplicate prefixes (i.e. those that the data items
                 # share with their parent event)
                 return to_strip.split(".")[-1]
-            else:
-                return to_strip
+            return to_strip
 
         # Modify (a copy of) the event data items as the user has requested
         display_data = self.map_hex_args(event.data)
@@ -320,13 +317,13 @@ class EventDetail(urwid.WidgetWrap):
         if maxcol <= 0:
             return 0
 
-        header_lengths = sorted([len(h) for h in data.keys()])
+        header_lengths = sorted([len(h) for h in data])
         value_lengths = sorted([len(str(v[0])) if isinstance(v, tuple) else len(str(v)) for v in data.values()])
 
         best_split = None
         best_split_num_unsplit = None
 
-        for split in range(0, maxcol + 1):
+        for split in range(maxcol + 1):
             current_unsplit = sum([1 if l <= split else 0 for l in header_lengths]) + sum(
                 [1 if l < maxcol - split else 0 for l in value_lengths]
             )

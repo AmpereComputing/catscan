@@ -5,10 +5,11 @@ import re
 import shlex
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from enum import StrEnum
 from fractions import Fraction
 from functools import cached_property
-from typing import Any, Callable
+from typing import Any
 
 from catscan.completion import FilteredSuggestions
 from catscan.search import MatchType
@@ -141,7 +142,7 @@ class Arg:
                     if v in ("0", "n", "f"):
                         return False
                     raise ValueError("Invalid boolean value")
-                elif arg_type is int:
+                if arg_type is int:
                     return int(value, base=0)
 
                 return arg_type(value)
@@ -375,8 +376,7 @@ class CommandDefinition:
 
         if self.display_name:
             return f"{self.name} {signature}".strip()
-        else:
-            return f"{signature}".strip()
+        return f"{signature}".strip()
 
     @property
     def has_example(self):
@@ -386,8 +386,7 @@ class CommandDefinition:
     def example(self):
         if self.display_name:
             return f":{self.name} {self._example}".strip()
-        else:
-            return f":{self._example}".strip()
+        return f":{self._example}".strip()
 
 
 def parse_command_args(command: str) -> tuple[str | None, list[Any], dict[str, Any]]:

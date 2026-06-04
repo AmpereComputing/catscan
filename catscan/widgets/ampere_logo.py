@@ -142,8 +142,7 @@ class AmpereLogo(urwid.widget.Widget):
             new_line = self.translate_mxb(new_line, post_translate_by)
             if reverse_extra_y:
                 return self.translate_mxb(new_line, (translate_lines[0], -translate_lines[1]))
-            else:
-                return self.translate_mxb(new_line, translate_lines)
+            return self.translate_mxb(new_line, translate_lines)
 
         def change_circle(prev):
             cx, cy, r = prev

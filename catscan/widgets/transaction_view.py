@@ -57,8 +57,7 @@ class TransactionView(EventView):
     def max_column_header_width(self) -> int:
         if self.stream_data.transaction_event_rows:
             return max(len(str(t.name)) + t.level for t in self.stream_data.transaction_event_rows.values()) + 3
-        else:
-            return 3
+        return 3
 
     def _update_selected_row_name(self, newly_selected_row: int) -> None:
         for i, row_name in enumerate(self.stream_data.transaction_event_rows.keys()):

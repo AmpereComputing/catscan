@@ -111,11 +111,10 @@ class TextTable(urwid.widget.Widget):
     def _align_to_char(align: urwid.Align) -> str:
         if align == urwid.CENTER:
             return "^"
-        elif align == urwid.RIGHT:
+        if align == urwid.RIGHT:
             return ">"
-        else:
-            assert align == urwid.LEFT
-            return "<"
+        assert align == urwid.LEFT
+        return "<"
 
     def _render_cell(self, text: str, width: int, align: urwid.Align = urwid.LEFT) -> list[str]:
         """

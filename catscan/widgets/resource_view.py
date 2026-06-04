@@ -96,8 +96,7 @@ class ResourceView(EventView):
             else:
                 max_group_name = 0
             return max(max_event_name, max_group_name)
-        else:
-            return 1
+        return 1
 
     def _update_selected_row_name(self, newly_selected_row: str) -> None:
         groups_seen = set()

@@ -4,8 +4,8 @@
 import os
 import unittest
 from collections import deque
+from collections.abc import Callable
 from tempfile import TemporaryDirectory
-from typing import Callable
 
 from perf_streams.event_stream import Event, EventStreamWriter
 

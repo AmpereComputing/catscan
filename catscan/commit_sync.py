@@ -73,8 +73,7 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, Fraction):
             return {"numerator": obj.numerator, "denominator": obj.denominator}
-        else:
-            return super().default(obj)
+        return super().default(obj)
 
     def encode(self, obj):
         if isinstance(obj, CommitSyncState):
@@ -164,6 +163,7 @@ class CommitSyncer:
             main_loop (urwid.MainLoop | None): if a main-loop is provided,
             syncing will be maintained by an asyncio, otherwise the legacy
             Threading will be used
+
         """
         if main_loop is None:
             # Use threading
@@ -224,12 +224,12 @@ class CommitSyncer:
         # otherwise
         if self.is_primary:
             self.outgoing = open(self.fifo1_name, "w")
-            self.incoming = open(self.fifo2_name, "r")
+            self.incoming = open(self.fifo2_name)
         else:
-            self.incoming = open(self.fifo1_name, "r")
+            self.incoming = open(self.fifo1_name)
             self.outgoing = open(self.fifo2_name, "w")
 
-        with open(self.other_init_filename, "r") as init_file:
+        with open(self.other_init_filename) as init_file:
             from_json = json.load(init_file)
             self.other_column_header_width = from_json["column_header_width"]
             self.other_pushout_index = {int(inum): pushout for inum, pushout in from_json["pushout_index"].items()}
@@ -406,4 +406,4 @@ class CommitSyncer:
         else:
             self.latest_sync_state = adjusted_sync_state
             # Required to wakeup/interrupt main loop
-            os.write(self.notifier, "u".encode())
+            os.write(self.notifier, b"u")

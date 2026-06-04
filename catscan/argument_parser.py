@@ -68,7 +68,7 @@ Config file options:
                 found = False
                 for path in search_paths:
                     try:
-                        with open(path, "r") as args_file:
+                        with open(path) as args_file:
                             for context_path in context:
                                 if os.path.realpath(path) == os.path.realpath(context_path):
                                     raise ValueError(
@@ -79,7 +79,7 @@ Config file options:
                                 self._read_args_from_files(
                                     [
                                         arg
-                                        for arg_line in args_file.readlines()
+                                        for arg_line in args_file
                                         for arg in self.convert_arg_line_to_args(arg_line)
                                     ],
                                     context=context + [path],

@@ -1,8 +1,8 @@
 """How to name/match events"""
 
 import re
+from collections.abc import Callable
 from functools import cached_property
-from typing import Callable
 
 
 def rename_spec(arg: str):
@@ -71,7 +71,7 @@ class EventSpecification:
         factors = []
         for factor in self.factors:
             if "." in factor:
-                long_factor = factor[1:] if factor.startswith(".") else factor
+                long_factor = factor.removeprefix(".")
             else:
                 long_factor = f"{event_base}.{factor}"
 

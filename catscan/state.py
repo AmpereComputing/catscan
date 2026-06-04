@@ -128,9 +128,8 @@ class Selection:
         assert self.is_event() or self.is_time_range()
         if self.is_event():
             return self.event.time
-        else:
-            assert self.is_time_range()
-            return self._time_range[0]
+        assert self.is_time_range()
+        return self._time_range[0]
 
     @property
     def end_ps(self) -> int:
@@ -140,9 +139,8 @@ class Selection:
         assert self.is_event() or self.is_time_range()
         if self.is_event():
             return self.event.time + self._event_duration
-        else:
-            assert self.is_time_range()
-            return self._time_range[1]
+        assert self.is_time_range()
+        return self._time_range[1]
 
     def __bool__(self):
         return self.event_row is not None
@@ -153,7 +151,7 @@ class Selection:
         """
         if self == other or not other:
             return self
-        elif not self:
+        if not self:
             return other
 
         # At this point, we know we need to combine the two selections to form
@@ -185,10 +183,9 @@ class Selection:
     def __repr__(self):
         if not self:
             return "<no selection>"
-        elif self.is_event():
+        if self.is_event():
             return f"<selected event {self.event}>"
-        else:
-            return f"<selected row {self.event_row} from {self.start_ps}ps to {self.end_ps}ps>"
+        return f"<selected row {self.event_row} from {self.start_ps}ps to {self.end_ps}ps>"
 
 
 class CatscanState(NamedTuple):

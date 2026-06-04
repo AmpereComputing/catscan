@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from abc import ABC, abstractmethod
-from typing import Callable
+from collections.abc import Callable
 
 import urwid
 

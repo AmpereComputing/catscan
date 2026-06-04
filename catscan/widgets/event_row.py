@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
+from collections.abc import Callable
 from enum import Enum
 from fractions import Fraction
 from functools import lru_cache
-from typing import Callable
 
 import urwid
 
@@ -790,12 +790,11 @@ class EventRow(EventRowBase):
             if second_event:
                 # If at least two events, select the entire region
                 return self._make_selection(time_range=(start_ps, end_ps))
-            elif first_event:
+            if first_event:
                 # If only one event, select only that event
                 return self._make_selection(event=first_event, duration=self.state.ps_per_cycle)
-            else:
-                # If no events, return an empty selection
-                return Selection()
+            # If no events, return an empty selection
+            return Selection()
 
         if not self.expanded:
             if self.state.cycles_per_char >= 1:
@@ -805,7 +804,7 @@ class EventRow(EventRowBase):
                 start_ps, end_ps = self.index_to_ps_range(cycle_index, 1)
 
             return ps_range_to_selection(start_ps, end_ps)
-        elif self.state.cycles_per_char > 1:
+        if self.state.cycles_per_char > 1:
             assert self.state.cycles_per_char.denominator == 1
 
             # Do not select an event if the user clicked on an 'empty'
@@ -819,16 +818,15 @@ class EventRow(EventRowBase):
             # Convert column to the bounds of this cell, in picoseconds
             col_start_ps, col_end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
             return ps_range_to_selection(col_start_ps, col_end_ps)
-        else:
-            # Convert column to an index into the data array (only
-            # guaranteed to exist and be valid when the current view is
-            # expanded with cycles_per_char <= 1)
-            data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
-            assert data_idx >= 0 and data_idx < len(self.data)
-            if row >= len(self.data[data_idx]):
-                return Selection()  # nothing there, return empty selection
-            event = self.data[data_idx][row]
-            return self._make_selection(event=event, duration=self.state.ps_per_cycle)
+        # Convert column to an index into the data array (only
+        # guaranteed to exist and be valid when the current view is
+        # expanded with cycles_per_char <= 1)
+        data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
+        assert data_idx >= 0 and data_idx < len(self.data)
+        if row >= len(self.data[data_idx]):
+            return Selection()  # nothing there, return empty selection
+        event = self.data[data_idx][row]
+        return self._make_selection(event=event, duration=self.state.ps_per_cycle)
 
     def mouse_to_next_selection(self, col: int, reverse=False) -> Selection:
         if self.expanded:

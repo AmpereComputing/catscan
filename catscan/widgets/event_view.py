@@ -3,7 +3,8 @@
 
 import logging
 import math
-from typing import Any, Callable, Iterable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 import urwid
 from perf_streams.event_stream import Event

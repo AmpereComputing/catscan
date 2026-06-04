@@ -6,8 +6,8 @@ import logging
 import re
 import struct
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from types import MethodType
-from typing import Callable
 
 import capstone
 from perf_streams.event_stream import Event
@@ -311,7 +311,7 @@ class Mapper:
             if name in self.values_no_modify:
                 continue
 
-            elif self.regex_instargs.match(name):
+            if self.regex_instargs.match(name):
                 changes[name] = hex(int(value))
                 changes["disassembly"] = self.disasm_single_instruction(value)
             elif self.regex_hexargs.match(name):

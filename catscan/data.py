@@ -21,8 +21,8 @@ import logging
 import os
 import pickle
 import zlib
+from collections.abc import Callable
 from enum import StrEnum, auto
-from typing import Callable
 
 from perf_streams.event_stream import Event, EventStreamReader
 
@@ -147,8 +147,7 @@ class EventData:
         if time_idx > 0:
             time = self.times[time_idx - 1]
             return self.events[time][-1]
-        else:
-            return None
+        return None
 
     def oldest_younger(self, event: Event) -> Event | None:
         index_in_time = self.events[event.time].index(event)
@@ -158,8 +157,7 @@ class EventData:
         if time_idx < len(self.times) - 1:
             time = self.times[time_idx + 1]
             return self.events[time][0]
-        else:
-            return None
+        return None
 
     def closest_to(self, time: int, direction: str | None = None) -> Event | None:
         """
@@ -187,11 +185,10 @@ class EventData:
 
         if time > closest_time:
             return self.events[closest_time][-1]
-        elif time < closest_time:
+        if time < closest_time:
             return self.events[closest_time][0]
-        else:
-            middle_index = (len(self.events[closest_time]) - 1) // 2
-            return self.events[closest_time][middle_index]
+        middle_index = (len(self.events[closest_time]) - 1) // 2
+        return self.events[closest_time][middle_index]
 
     def __len__(self) -> int:
         return self._event_count
@@ -208,19 +205,17 @@ class EventData:
             # start_idx is the index of the first time within the slice
             if key.start is None:
                 start_idx = len(self.times) - 1 if reverse else 0
+            elif reverse:
+                start_idx = bisect.bisect_right(self.times, key.start) - 1
             else:
-                if reverse:
-                    start_idx = bisect.bisect_right(self.times, key.start) - 1
-                else:
-                    start_idx = bisect.bisect_left(self.times, key.start)
+                start_idx = bisect.bisect_left(self.times, key.start)
             # stop_idx is the index of the first time *after* the slice
             if key.stop is None:
                 stop_idx = -1 if reverse else len(self.times)
+            elif reverse:
+                stop_idx = bisect.bisect_right(self.times, key.stop) - 1
             else:
-                if reverse:
-                    stop_idx = bisect.bisect_right(self.times, key.stop) - 1
-                else:
-                    stop_idx = bisect.bisect_left(self.times, key.stop)
+                stop_idx = bisect.bisect_left(self.times, key.stop)
 
             # Now, yield all the events within the given range
             step = 0
@@ -577,10 +572,7 @@ class EventStreamData:
     def _add_event(self, event: Event, original_event_name: str):
         logging.debug("Add event %s at %d", event.name, event.time)
         group = None
-        if occupancy := self._occupancy.acquired(event):
-            group = "Occupancy"
-            self._adjust_event_for_occupancy(event, occupancy)
-        elif occupancy := self._occupancy.released(event):
+        if (occupancy := self._occupancy.acquired(event)) or (occupancy := self._occupancy.released(event)):
             group = "Occupancy"
             self._adjust_event_for_occupancy(event, occupancy)
 
@@ -726,8 +718,7 @@ class EventStreamDataView:
                 next_key = self._view._keys[self._next_index]
                 self._next_index += 1
                 return self._view.get(next_key)
-            else:
-                raise StopIteration()
+            raise StopIteration()
 
     def __iter__(self):
         return self.Iter(self)

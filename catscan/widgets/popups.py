@@ -1,7 +1,8 @@
 # Copyright (c) 2024 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from typing import Callable, NamedTuple
+from collections.abc import Callable
+from typing import NamedTuple
 
 import urwid
 

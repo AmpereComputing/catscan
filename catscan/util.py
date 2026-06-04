@@ -3,7 +3,7 @@
 
 import re
 from collections.abc import Iterable
-from typing import Pattern
+from re import Pattern
 
 from urwid.str_util import calc_width
 
@@ -84,8 +84,7 @@ def str_fit_width(
 
     if str_width(to_fit) == max_width:
         return to_fit
-    elif pad:
+    if pad:
         adjusted_max_width = max_width + len(to_fit) - str_width(to_fit)
         return f"{to_fit: {pad}{adjusted_max_width}}"
-    else:
-        return to_fit
+    return to_fit

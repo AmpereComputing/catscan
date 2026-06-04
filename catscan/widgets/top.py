@@ -268,29 +268,27 @@ class Top(urwid.widget.Widget):
         selected_event = self.state.selection.is_event()
         if self.marking:
             return ("🖍  provide a character to mark selected event...", self.stream_data.source)
-        elif self.going_to_mark:
+        if self.going_to_mark:
             return ("👓  provide a character to go to marked event...", self.stream_data.source)
-        elif self.state.searcher is not None:
+        if self.state.searcher is not None:
             if selected_event and self.state.selection.event == self.search_tracker.search_cursor:
                 return (
                     f"🔍 {self.search_tracker.cursor_idx + 1} of {self.search_tracker.total_matches} results in {self.state.searcher}",
                     self.stream_data.source,
                 )
-            else:
-                return (
-                    f"🔍 {self.search_tracker.total_matches} results for {self.state.searcher}",
-                    self.stream_data.source,
-                )
-        else:
-            sync_status = ""
-            if self.commit_syncer and not self.commit_syncer.stopped:
-                symbol = "⇄" if self.commit_syncer.syncing else "⏸"
-                sync_status = f" | {symbol} {self.commit_syncer.fifo_basename}"
-            icon = "🐈" if self.state.has_focus else "⏾ "
             return (
-                f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
+                f"🔍 {self.search_tracker.total_matches} results for {self.state.searcher}",
                 self.stream_data.source,
             )
+        sync_status = ""
+        if self.commit_syncer and not self.commit_syncer.stopped:
+            symbol = "⇄" if self.commit_syncer.syncing else "⏸"
+            sync_status = f" | {symbol} {self.commit_syncer.fifo_basename}"
+        icon = "🐈" if self.state.has_focus else "⏾ "
+        return (
+            f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
+            self.stream_data.source,
+        )
 
     def load_file(
         self,
@@ -319,7 +317,7 @@ class Top(urwid.widget.Widget):
             def callback(percentage):
                 self.loading_screen.update_pct_loaded(percentage)
                 self.loading_pct = percentage
-                os.write(updater, "u".encode())
+                os.write(updater, b"u")
 
             return callback
 
@@ -547,8 +545,7 @@ class Top(urwid.widget.Widget):
 
         if combined_indices:
             return min(combined_indices)
-        else:
-            return 0
+        return 0
 
     def show_help(self, command: str | None = None) -> bool:
         if command:
@@ -703,7 +700,7 @@ class Top(urwid.widget.Widget):
         )
 
     def highlight_transactions(self, txids: Iterable[int]) -> bool:
-        color_use = {c: 0 for c in range(NUM_EVENT_COLORS)}
+        color_use = dict.fromkeys(range(NUM_EVENT_COLORS), 0)
         for color in self.state.highlighted_transactions.values():
             color_use[color] += 1
         least_used_color = min(color_use, key=color_use.get)
@@ -1147,7 +1144,7 @@ class Top(urwid.widget.Widget):
             else:
                 self.show_help()
             return False
-        elif self.state.loading:
+        if self.state.loading:
             self.add_message(f"'{command}' cannot be executed while loading")
             return False
 
@@ -1166,7 +1163,7 @@ class Top(urwid.widget.Widget):
             else:
                 self.show_help()
             return False
-        elif command == Commands.SEARCH:
+        if command == Commands.SEARCH:
             if not args:
                 self.search(None)
             else:
@@ -1266,10 +1263,10 @@ class Top(urwid.widget.Widget):
                     f"'{command}' requires you to pass a path to use as the base name for the FIFOs used to synchronize with the other catscan process"
                 )
                 return False
-            elif self.commit_sync_event is None or self.commit_sync_data_name is None:
+            if self.commit_sync_event is None or self.commit_sync_data_name is None:
                 self.add_message("No sync event and/or data-name specified")
                 return False
-            elif "stop" in args:
+            if "stop" in args:
                 self.commit_syncer.stop()
                 self.commit_syncer = None
             else:
