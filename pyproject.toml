@@ -53,26 +53,35 @@ indent-width = 4
 target-version = "py312"
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-# Unlike Flake8, Ruff doesn't enable pycodestyle warnings (`W`) or
-# McCabe complexity (`C901`) by default.
 select = [
+  "A",
+  "ANN",
+  "B",
+  "C4",
   "D3",
+  "D4",
   "E4",
   "E7",
   "E9",
+  "ERA",
   "F",
+  "FURB",
   "I",
+  "INT",
+  "N",
+  "PGH004",
+  "PIE",
+  "PL",
+  "PYI",
+  "RET",
+  "SIM",
+  "T20",
   "TID252",
-#  "SIM", # consider simplify warnings
-#  "D1", # consider docstring warnings
-#  "D4", # consider docstring warnings
-#  "ERA", # consider some un-commented code warnings
-#  "C4", # consider some comprehension warnings
-#  "PL", # consider some pylint warnings
-#  "PD", # consider some pandas warnings
+  "UP",
 ]
 ignore = [
+  "ANN401",
+  "B905",
   "F401",
   "F403",
   "W191",
@@ -92,7 +101,17 @@ ignore = [
   "COM812",
   "COM819",
   "ISC001",
-  "ISC002"
+  "ISC002",
+  "PLR0911",
+  "PLR0912",
+  "PLR0913",
+  "PLR0914",
+  "PLR0915",
+  "PLR0916",
+  "PLR0917",
+  "PLR1702",
+  "PLR2004",
+  "SIM115",
 ]
 
 # Allow fix for all enabled rules (when `--fix`) is provided.
@@ -103,10 +122,29 @@ unfixable = ["F401"]
 dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["F405", "E731"]
+"tests/*" = [
+    "ANN",
+    "B",
+    "D",
+    "F405",
+    "E731",
+    "PLR2004",
+    "PLR0904"
+]
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+suppress-none-returning = true
+suppress-dummy-args = true
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+[tool.ruff.lint.pep8-naming]
+extend-ignore-names = ["assert*"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.format]
 quote-style = "double"
