@@ -7,7 +7,7 @@ import gzip
 import heapq
 from array import array
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from functools import cached_property
 from io import IOBase
 from itertools import chain, islice
@@ -23,6 +23,7 @@ import pickle
 import zlib
 from collections.abc import Callable
 from enum import StrEnum, auto
+from typing import Self
 
 from perf_streams.event_stream import Event, EventStreamReader
 
@@ -62,7 +63,7 @@ class Transaction:
         self.start_time = min(event.time, self.start_time)
         self.end_time = max(event.time, self.end_time)
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"txid={self.txid} start={self.start_time:,}ps end={self.end_time:,}ps parents={self.parents} children={self.children}"
 
 
@@ -99,7 +100,7 @@ class EventData:
         self._event_count = 0
         self._max_per_time = 0
 
-    def key(self):
+    def key(self) -> str:
         return self.name
 
     @property
@@ -107,19 +108,19 @@ class EventData:
         return self._event_count
 
     @property
-    def first_time(self):
+    def first_time(self) -> int:
         return self.times[0]
 
     @property
-    def last_time(self):
+    def last_time(self) -> int:
         return self.times[-1]
 
     @property
-    def start_time(self):
+    def start_time(self) -> int:
         return self.first_time
 
     @property
-    def end_time(self):
+    def end_time(self) -> int:
         return self.last_time
 
     def insert(self, event: Event) -> None:
@@ -193,7 +194,7 @@ class EventData:
     def max_events_per_time(self) -> int:
         return self._max_per_time
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: int | slice) -> Iterator[Event]:
         if isinstance(key, slice):
             max_step = 1 if key.step is None else key.step
             assert isinstance(max_step, int) and max_step != 0
@@ -230,7 +231,7 @@ class EventData:
 
 
 class TransactionEventData(EventData):
-    def __init__(self, tx: Transaction, spec: "TransactionSpecification", name=None):
+    def __init__(self, tx: Transaction, spec: "TransactionSpecification", name: str | int | None = None):
         super().__init__(hex(name) if isinstance(name, int) else name)
         self._ancestry = []
         self.transaction = tx
@@ -239,43 +240,43 @@ class TransactionEventData(EventData):
         self._end_event_time = None
 
     @property
-    def txid(self):
+    def txid(self) -> int:
         return self.transaction.txid
 
     @property
-    def ancestry(self):
+    def ancestry(self) -> list[int]:
         return self._ancestry + [self.txid]
 
     @property
-    def level(self):
+    def level(self) -> int:
         return len(self._ancestry)
 
-    def key(self):
+    def key(self) -> int:
         return self.txid
 
-    def start(self, event):
+    def start(self, event: Event) -> None:
         self._start_event_time = event.time
 
     @property
-    def started(self):
+    def started(self) -> bool:
         return self._start_event_time is not None
 
-    def end(self, event):
+    def end(self, event: Event) -> None:
         self._end_event_time = event.time
 
     @property
-    def ended(self):
+    def ended(self) -> bool:
         return self._end_event_time is not None
 
     @property
-    def start_time(self):
+    def start_time(self) -> int:
         return self._start_event_time or self.first_time
 
     @property
-    def end_time(self):
+    def end_time(self) -> int:
         return self._end_event_time or self.last_time
 
-    def process_event(self, event: Event):
+    def process_event(self, event: Event) -> None:
         self.spec.process(self, event)
 
 
@@ -294,14 +295,14 @@ class TransactionSpecification:
         self.start = start or self.DEFAULT_START
         self.end = end or self.DEFAULT_END
 
-    def event_specifications(self):
+    def event_specifications(self) -> list[trace_events.EventSpecification]:
         return [
             trace_events.trace_spec(self.name),
             self.start,
             self.end,
         ]
 
-    def create_row(self, tx: Transaction, event: Event):
+    def create_row(self, tx: Transaction, event: Event) -> TransactionEventData:
         transaction = TransactionEventData(
             tx,
             self,
@@ -310,7 +311,7 @@ class TransactionSpecification:
         transaction.start(event)
         return transaction
 
-    def process(self, transaction: TransactionEventData, event: Event):
+    def process(self, transaction: TransactionEventData, event: Event) -> None:
         if transaction.name in (None, self.DEFAULT_NAME) and self.name in event.data:
             transaction.original_name = transaction.short_name = transaction.name = event.data[self.name]
         if self.end(event.name):
@@ -356,13 +357,13 @@ class EventStreamData:
         self.finalized = False
 
     @classmethod
-    def create_empty(cls):
+    def create_empty(cls) -> Self:
         empty = cls("empty")
         empty.finalize()
         return empty
 
     @property
-    def empty(self):
+    def empty(self) -> bool:
         return self.source == "empty"
 
     def add_transaction_view(
@@ -494,7 +495,7 @@ class EventStreamData:
     def period(self) -> int:
         periods = Counter()
 
-        def calculate_periods(rows):
+        def calculate_periods(rows: Iterable[EventData]) -> None:
             times = heapq.merge(*(row.times for row in rows))
             try:
                 prev = next(times)
@@ -556,13 +557,13 @@ class EventStreamData:
 
         return tx
 
-    def _get_row(self, event, original_event_name: str, *, group: str | None = None) -> EventData:
+    def _get_row(self, event: Event, original_event_name: str, *, group: str | None = None) -> EventData:
         if event.name not in self.event_rows:
             event_group, short_name = self.mapper.process(event.name, default_group=group)
             self.event_rows[event.name] = EventData(event.name, event_group, short_name, original_event_name)
         return self.event_rows[event.name]
 
-    def _adjust_event_for_occupancy(self, event, occupancy):
+    def _adjust_event_for_occupancy(self, event: Event, occupancy: trace_events.Occupancy) -> None:
         event.name = occupancy.name
         event.abbrev = str(occupancy.count)
 
@@ -678,7 +679,7 @@ class EventStreamData:
                 to_process |= self.transactions[txid].children - processed
         return [self.transactions[txid] for txid in processed]
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[EventData]:
         return iter(self.events())
 
     def events(self, **kwargs):
@@ -864,7 +865,7 @@ def get_event_data(
         occupancy=occupancy,
     )
 
-    def event_already_in(event: str, event_specs: Iterable[EventSpecification]):
+    def event_already_in(event: str, event_specs: Iterable[EventSpecification]) -> bool:
         return any(spec(event) for spec in event_specs)
 
     extra = []

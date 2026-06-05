@@ -9,7 +9,7 @@ from enum import StrEnum
 from re import Pattern
 from sys import maxsize
 
-from catscan.data import Event, EventStreamDataView
+from catscan.data import Event, EventData, EventStreamDataView
 from catscan.util import glob_to_pattern
 
 
@@ -34,7 +34,7 @@ class Searcher(ABC):
         """
         return True
 
-    def search_event_row(self, row) -> bool:
+    def search_event_row(self, row: EventData) -> bool:
         return self.search_row(row.key(), row.fields)
 
     def filtering_fields(self) -> bool:
@@ -78,7 +78,7 @@ class Searcher(ABC):
         """
 
     @abstractmethod
-    def __repr__(self):
+    def __repr__(self) -> str:
         pass
 
 
@@ -129,7 +129,7 @@ class FilteringSearcher(Searcher):
     def search_field(self, name: str) -> bool:
         return name in self.search_fields
 
-    def _filter_repr(self):
+    def _filter_repr(self) -> str:
         field_limiter = "" if self.search_fields is None else f" in {', '.join(self._orig_search_fields)}"
         row_limiter = "" if self.search_rows is None else f" in {', '.join(map(str, self.search_rows))}"
         return f"{field_limiter}{row_limiter}"
@@ -195,7 +195,7 @@ class TextSearcher(FilteringSearcher):
     def case_insensitive_field_match(self, name: str, field: int | str) -> bool:
         return (not self.filtering_fields() or self.search_field(name)) and self.search_term in str(field).lower()
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         filter_repr = self._filter_repr()
         case_sensitivity = "case-sensitive " if self.case_sensitive else ""
         return f'{case_sensitivity}search for string "{self.search_term}"{filter_repr}'
@@ -239,7 +239,7 @@ class IntSearcher(FilteringSearcher):
     def masked_field_match(self, name: str, field: int | str) -> bool:
         return isinstance(field, int) and ((field ^ self.search_term) & self.search_mask) == 0
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         filter_repr = self._filter_repr()
         mask = "" if self.search_mask is None else f" with mask {hex(self.search_mask)}"
         return f"search for int {hex(self.search_term)}/{self.search_term}{mask}{filter_repr}"
@@ -287,7 +287,7 @@ class PerPeriodSearcher(Searcher):
     def field_match(self, name: str, field: int | str) -> bool:
         return False
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return repr(self.searcher) + f", with at least {self.min_per_period} per cycle"
 
 
@@ -435,7 +435,9 @@ class EventStreamDataSearch:
                 end_ps = latest_match.time - 1
         return latest_match
 
-    def _next_row_match(self, row: str, starting_point: int | Event, end_ps: int, reverse=False):
+    def _next_row_match(
+        self, row: str, starting_point: int | Event, end_ps: int, reverse: bool = False
+    ) -> Event | None:
         # Convert starting_point to picoseconds if not already
         if isinstance(starting_point, Event):
             start_ps = starting_point.time

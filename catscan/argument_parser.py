@@ -5,6 +5,7 @@ import argparse
 import os
 import shlex
 import sys
+from collections.abc import Iterable
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -14,10 +15,10 @@ class ArgumentParser(argparse.ArgumentParser):
         self,
         tool: str | None = None,
         comments: bool = False,
-        arg_file_path: str | None = None,
+        arg_file_path: list[str] | None = None,
         fromfile_prefix_chars: str | None = None,
         epilog: str = "",
-        formatter_class: argparse.HelpFormatter = argparse.RawTextHelpFormatter,
+        formatter_class: type[argparse.HelpFormatter] = argparse.RawTextHelpFormatter,
         **kwargs,
     ):
         self.enable_comments = comments
@@ -46,7 +47,7 @@ Config file options:
             **kwargs,
         )
 
-    def _read_args_from_files(self, arg_strings, context=None):
+    def _read_args_from_files(self, arg_strings: Iterable[str], context: list[str] | None = None) -> list[str]:
         # expand arguments referencing files
         new_arg_strings = []
         for arg_string in arg_strings:
@@ -96,5 +97,5 @@ Config file options:
         # return the modified argument list
         return new_arg_strings
 
-    def convert_arg_line_to_args(self, arg_line):
+    def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
         return shlex.split(arg_line, comments=self.enable_comments)
