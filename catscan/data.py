@@ -26,8 +26,7 @@ from enum import StrEnum, auto
 
 from perf_streams.event_stream import Event, EventStreamReader
 
-from catscan.events import EventSpecification
-from catscan.events import trace_events as trace_events
+from catscan.events import EventSpecification, trace_events
 from catscan.events.mapping import Mapper
 
 # The number of unique colors used for events
@@ -49,9 +48,7 @@ class CatscanEvent(Event):
 
 
 class Transaction:
-    """
-    Class to hold per-transaction information
-    """
+    """Class to hold per-transaction information."""
 
     def __init__(self, event: Event) -> None:
         self.txid = event.data["txid"]
@@ -338,7 +335,7 @@ class EventStreamData:
         self._event_filters = event_filters or trace_events.EventFilters()
 
         self.event_rows = {}
-        self.event_row_keys = tuple()
+        self.event_row_keys = ()
         self.transactions = {}
 
         self.transaction_event_rows = {}
@@ -392,8 +389,8 @@ class EventStreamData:
     @property
     def views(self) -> set[str]:
         if self._transaction_specifications:
-            return set([DataView.TRANSACTIONS])
-        return set([DataView.RESOURCE])
+            return {DataView.TRANSACTIONS}
+        return {DataView.RESOURCE}
 
     def finalize(self):
         """
@@ -466,7 +463,7 @@ class EventStreamData:
 
     def _gen_event_row_keys(self) -> tuple[str]:
         # Create dictionary of group names to group indices
-        groups = {g: i for i, g in enumerate(sorted(set([row.group for _, row in self.event_rows.items()])))}
+        groups = {g: i for i, g in enumerate(sorted({row.group for _, row in self.event_rows.items()}))}
 
         # Sort the events primarily by group name and second by event 'index'
         # (the order they were specified on the command-line or in a config
@@ -543,7 +540,7 @@ class EventStreamData:
         if pull_for_this_event := self._pull_from_tx.get(event.name, None):
             pull_for_this_event = pull_for_this_event.copy()
             tried_txes = set()
-            txes_to_try = set([txid])
+            txes_to_try = {txid}
             while txes_to_try and pull_for_this_event:
                 trying_txid = txes_to_try.pop()
                 tried_txes.add(trying_txid)
@@ -868,7 +865,7 @@ def get_event_data(
     )
 
     def event_already_in(event: str, event_specs: Iterable[EventSpecification]):
-        return any([spec(event) for spec in event_specs])
+        return any(spec(event) for spec in event_specs)
 
     extra = []
     if view == "transactions":

@@ -106,15 +106,17 @@ class DynamicAbbreviation(ABC):
         self.patterns = [re.compile(pattern) for pattern in patterns]
         self.exclude_patterns = [re.compile(pattern) for pattern in exclude_patterns] if exclude_patterns else []
 
-    def value_with_suffix(self, event: Event, suffix: str):
+    def value_with_suffix(self, event: Event, suffix: str) -> str | None:
         for name, value in event.data.items():
             if name.endswith(suffix):
                 return value
 
+        return None
+
     def might_generate(self, name: str) -> bool:
         """
         Given the name of an event, determine if this class might be
-        able to generate an abbreviation for the given event
+        able to generate an abbreviation for the given event.
         """
         return any(pattern.search(name) for pattern in self.patterns) and not any(
             pattern.search(name) for pattern in self.exclude_patterns
@@ -253,7 +255,7 @@ class Mapper:
                 return (m.group("prefix"), m.group("tail"))
         return default_group, name
 
-    def event_name_to_abbrev(self, event):
+    def event_name_to_abbrev(self, event: Event):
         name = event.name
         if name not in self.abbreviation_lookups:
             self.abbreviation_lookups[name] = [
@@ -269,12 +271,14 @@ class Mapper:
             self.static_abbreviations[name] = name.split(".")[-1][0]
         return self.static_abbreviations[name]
 
-    def value_with_suffix(self, event, suffix):
+    def value_with_suffix(self, event: Event, suffix: str) -> str | None:
         for name, value in event.data.items():
             if name.endswith(suffix):
                 return value
 
-    def rename_from_list(self, index, values, default=None):
+        return None
+
+    def rename_from_list(self, index, values: list[str], default: str | None = None) -> str:
         if not isinstance(index, int):
             return index
 

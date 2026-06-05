@@ -39,16 +39,16 @@ class UnpaddedButton(urwid.Button):
         super(urwid.Button, self).__init__(urwid.Columns([self._label]))
 
 
-def ReleaseButton(*args, allow_other_press=False, **kwargs):
+def ReleaseButton(*args, allow_other_press=False, **kwargs):  # noqa: N802
     """Create a button that listens on mouse release."""
     return Release(urwid.Button(*args, **kwargs), allow_other_press=allow_other_press)
 
 
-def ReleaseUnpaddedButton(*args, allow_other_press=False, **kwargs):
+def ReleaseUnpaddedButton(*args, allow_other_press=False, **kwargs):  # noqa: N802
     """Create a button that listens on mouse release."""
     return Release(UnpaddedButton(*args, **kwargs), allow_other_press=allow_other_press)
 
 
-def ReleaseCheckBox(*args, allow_other_press=False, **kwargs):
+def ReleaseCheckBox(*args, allow_other_press=False, **kwargs):  # noqa: N802
     """Create a checkbox that listens on mouse release."""
     return Release(urwid.CheckBox(*args, **kwargs), allow_other_press=allow_other_press)

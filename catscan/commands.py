@@ -81,11 +81,11 @@ class Arg:
         self._mutually_exclusive = mutually_exclusive
 
     @classmethod
-    def Optional(cls, *args, **kwargs):
+    def Optional(cls, *args, **kwargs):  # noqa: N802
         return cls(*args, nargs=0, **kwargs)
 
     @classmethod
-    def Required(cls, *args, **kwargs):
+    def Required(cls, *args, **kwargs):  # noqa: N802
         return cls(*args, required=True, **kwargs)
 
     @property
@@ -229,10 +229,10 @@ class CommandDefinition:
         if isinstance(self.specification, re.Pattern):
             if m := self.specification.match(arg):
                 return (True, m.groups())
-            return (False, tuple())
+            return (False, ())
         if isinstance(self.specification, tuple):
-            return (arg in self.specification, tuple())
-        return (self.specification == arg, tuple())
+            return (arg in self.specification, ())
+        return (self.specification == arg, ())
 
     def parse_arguments(self, args: list[str], kwargs: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
         """Parse positional and keyword arguments."""
@@ -277,13 +277,12 @@ class CommandDefinition:
             raise ValueError(f"Unknown keyword argument: {e}") from e
 
         for name in arguments:
-            if arg := self._kwargs_aliases.get(name):
-                if arg.mutually_exclusive:
-                    mutually_exclusive_groups[arg.mutually_exclusive_group].add(name)
+            if (arg := self._kwargs_aliases.get(name)) and arg.mutually_exclusive:
+                mutually_exclusive_groups[arg.mutually_exclusive_group].add(name)
 
-        for args in mutually_exclusive_groups.values():
-            if len(args) > 1:
-                raise ValueError(f"Only one of the arguments can be provided: {', '.join(args)}")
+        for group_args in mutually_exclusive_groups.values():
+            if len(group_args) > 1:
+                raise ValueError(f"Only one of the arguments can be provided: {', '.join(group_args)}")
 
         return positional_args, arguments
 

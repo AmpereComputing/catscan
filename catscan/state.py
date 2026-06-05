@@ -123,7 +123,7 @@ class Selection:
     @property
     def start_ps(self) -> int:
         """
-        The starting time of the selection (inclusive), in picoseconds
+        The starting time of the selection (inclusive), in picoseconds.
         """
         assert self.is_event() or self.is_time_range()
         if self.is_event():
@@ -134,7 +134,7 @@ class Selection:
     @property
     def end_ps(self) -> int:
         """
-        The ending time of the selection (exclusive), in picoseconds
+        The ending time of the selection (exclusive), in picoseconds.
         """
         assert self.is_event() or self.is_time_range()
         if self.is_event():
@@ -147,7 +147,7 @@ class Selection:
 
     def extend(self, other: "Selection") -> "Selection":
         """
-        Combine two selections into one
+        Combine two selections into one.
         """
         if self == other or not other:
             return self

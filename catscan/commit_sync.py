@@ -9,6 +9,7 @@ import os
 from fractions import Fraction
 from threading import Thread
 from typing import NamedTuple
+from contextlib import suppress
 
 from perf_streams.event_stream import Event
 
@@ -140,10 +141,8 @@ class CommitSyncer:
         self.latest_sync_state = None
 
     def cleanup_file(self, filename: str) -> None:
-        try:
+        with suppress(FileNotFoundError):
             os.unlink(filename)
-        except FileNotFoundError:
-            pass
 
     def make_fifo(self, filename: str) -> bool | None:
         try:
@@ -157,7 +156,7 @@ class CommitSyncer:
         return True
 
     def start(self, main_loop):
-        """Starts commit syncing.
+        """Start commit syncing.
 
         Args:
             main_loop (urwid.MainLoop | None): if a main-loop is provided,
@@ -206,8 +205,7 @@ class CommitSyncer:
 
     def _start(self):
         """
-        This should only be called inside the thread saved as
-        self.initialization_thread
+        Note: Should only be called inside the thread saved as self.initialization_thread.
         """
 
         atexit.register(self.cleanup_file, self.my_init_filename)

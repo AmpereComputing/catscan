@@ -73,10 +73,7 @@ def str_fit_width(
     continuation_min = max(continuation_min, str_width(continuation))
     if str_width(to_fit) > max_width:
         if max_width <= continuation_min:
-            if continuation_right:
-                to_fit = str_chop(to_fit, max_width)
-            else:
-                to_fit = str_chop_front(to_fit, max_width)
+            to_fit = str_chop(to_fit, max_width) if continuation_right else str_chop_front(to_fit, max_width)
         elif continuation_right:
             to_fit = str_chop(to_fit, max_width - str_width(continuation)) + continuation
         else:

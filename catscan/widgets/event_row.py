@@ -389,7 +389,7 @@ class EventRow(EventRowBase):
         return f"- {self.ed.short_name:<{self.state.column_header_width - 3}}│"[-self.state.column_header_width :]
 
     def ps_range_to_indices(self, start_ps: int, end_ps: int, cycles_per_index: int | Fraction) -> tuple[int, int]:
-        """Helper to return the starting/ending indices of a picosecond range"""
+        """Helper to return the starting/ending indices of a picosecond range."""
         start_offset_ps = self.state.start_ps - (self.state.start_ps % self.state.ps_per_cycle)
         indices_per_ps = 1.0 / (self.state.ps_per_cycle * cycles_per_index)
         start_index = math.floor((start_ps - start_offset_ps) * indices_per_ps)
@@ -399,7 +399,7 @@ class EventRow(EventRowBase):
     def index_to_ps_range(self, index: int, cycles_per_index: int | Fraction) -> tuple[int, int]:
         """
         Helper to return the picosecond range covered by a single 'index' (most
-        typically either a cycle or column)
+        typically either a cycle or column).
         """
         ps_per_index = self.state.ps_per_cycle * cycles_per_index
         difference_ps = self.state.start_ps % self.state.ps_per_cycle

@@ -25,8 +25,7 @@ solarized = {
     "green": "#859900",
 }
 
-# Define the base of the color palette to be passed to
-# urwid.BaseScreen.register_palette()
+# Define the base of the color palette to be passed to urwid.BaseScreen.register_palette()
 palette = [
     # name, foreground, background, terminal settings, foreground_high, background_high
     ("body", "light gray", "black", None, solarized["base0"], solarized["base03"]),

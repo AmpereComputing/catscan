@@ -11,10 +11,10 @@ import warnings
 
 import urwid
 
-from catscan import events as events
+from catscan import events
 from catscan.argument_parser import ArgumentParser
 from catscan.colors import palette
-from catscan.events import trace_events as trace_events
+from catscan.events import trace_events
 from catscan.events.mapping import (
     Mapper,
     disassembly_architectures,
@@ -241,9 +241,8 @@ def setup(args, screen: urwid.BaseScreen | None = None) -> Top:
 
     # Try to use 256 colors if we think the terminal supports it
     colors = 16
-    if "TERM" in os.environ:
-        if "256" in os.environ["TERM"]:
-            colors = 256
+    if "TERM" in os.environ and "256" in os.environ["TERM"]:
+        colors = 256
     loop.screen.set_terminal_properties(colors)
     loop.screen.reset_default_terminal_palette()
     loop.screen.focus_reporting = True

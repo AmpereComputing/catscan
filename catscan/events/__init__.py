@@ -1,4 +1,4 @@
-"""How to name/match events"""
+"""How to name/match events."""
 
 import re
 from collections.abc import Callable
@@ -28,11 +28,7 @@ def matching_spec(arg: str):
 
 
 def regex_replace(arg: str):
-    arg = arg.replace(".", "\\.")
-    arg = arg.replace("*", "[A-Za-z0-9_.]*")
-    arg = arg.replace("?", "[A-Za-z0-9_]+")
-    arg = arg.replace("#", "[0-9]+")
-    return arg
+    return arg.replace(".", "\\.").replace("*", "[A-Za-z0-9_.]*").replace("?", "[A-Za-z0-9_]+").replace("#", "[0-9]+")
 
 
 def parse_event(event_spec: str) -> tuple[str | Callable[[str], bool], list[str]]:
@@ -70,11 +66,7 @@ class EventSpecification:
         event_base = ".".join(self.event.split(".")[:-1])
         factors = []
         for factor in self.factors:
-            if "." in factor:
-                long_factor = factor.removeprefix(".")
-            else:
-                long_factor = f"{event_base}.{factor}"
-
+            long_factor = factor.removeprefix(".") if "." in factor else f"{event_base}.{factor}"
             factors.append(long_factor)
 
         return factors

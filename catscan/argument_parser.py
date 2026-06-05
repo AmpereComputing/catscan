@@ -12,12 +12,12 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def __init__(
         self,
-        tool=None,
-        comments=False,
-        arg_file_path=None,
-        fromfile_prefix_chars=None,
-        epilog="",
-        formatter_class=argparse.RawTextHelpFormatter,
+        tool: str | None = None,
+        comments: bool = False,
+        arg_file_path: str | None = None,
+        fromfile_prefix_chars: str | None = None,
+        epilog: str = "",
+        formatter_class: argparse.HelpFormatter = argparse.RawTextHelpFormatter,
         **kwargs,
     ):
         self.enable_comments = comments
@@ -77,11 +77,7 @@ Config file options:
 
                             new_arg_strings.extend(
                                 self._read_args_from_files(
-                                    [
-                                        arg
-                                        for arg_line in args_file
-                                        for arg in self.convert_arg_line_to_args(arg_line)
-                                    ],
+                                    [arg for arg_line in args_file for arg in self.convert_arg_line_to_args(arg_line)],
                                     context=context + [path],
                                 )
                             )

@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """
-Classes to interact with events in Catscan
+Classes to interact with events in Catscan.
 """
 
 import re
-from abc import ABC
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from itertools import chain
 
@@ -28,7 +28,7 @@ def split_spec(arg: str):
     event_spec, fmt = arg.split("=")
     event = EventSpecification(event_spec)
     names = tuple(zip(event.factors, event.long_factors))
-    lowercase = set(m for m in re.findall(r"\{([\w_\.]+):s?ls?\}", fmt))
+    lowercase = set(re.findall(r"\{([\w_\.]+):s?ls?\}", fmt))
     fmt = re.sub(r"\{([\w_\.]+):(.*?)s?ls?(.*?)\}", r"{\1:\2\3}", fmt)
 
     def rename_event_from_data(ev):
@@ -50,11 +50,12 @@ class EventFilter(ABC):
     OptionalCacheNames = CacheNames | None
 
     def events(self) -> list[EventSpecification]:
+        """Event specifications covered by filter."""
         return []
 
+    @abstractmethod
     def __call__(self, event: Event) -> tuple[bool | None, OptionalCacheNames]:
         """Process/filter event, included/excluded if bool returned."""
-        return None, None
 
 
 class EventFilters:
@@ -250,10 +251,12 @@ class OccupancyTracker:
 
 class ResourceView:
     @staticmethod
-    def value_with_suffix(event, suffix):
+    def value_with_suffix(event: Event, suffix: str) -> str | None:
         for name, value in event.data.items():
             if name.endswith(suffix):
                 return value
+
+        return None
 
     @staticmethod
     def setup_tx_data(mapping):

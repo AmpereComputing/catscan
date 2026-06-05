@@ -28,8 +28,8 @@ def generate_summary_table(
             histogram += summary_histogram(stream_data.get(row)[start_ps:end_ps], field=field)
 
     # Then, find the most frequent abbreviations and display them
-    MAX_ROWS = 99
-    frequent_abbrevs = histogram.most_common(MAX_ROWS)
+    max_rows = 99
+    frequent_abbrevs = histogram.most_common(max_rows)
 
     total = histogram.total()
 
@@ -52,9 +52,6 @@ def generate_summary_table(
         contents.append(["⋮", "⋮"])
         contents.append([others_header, others_count])
 
-    if len(frequent_abbrevs) > 1:
-        footer = ["total", f"{total} (100%)"]
-    else:
-        footer = []
+    footer = ["total", f"{total} (100%)"] if len(frequent_abbrevs) > 1 else []
 
     return header, contents, footer

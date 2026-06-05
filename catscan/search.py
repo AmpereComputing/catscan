@@ -26,7 +26,11 @@ class SearchPatterns(StrEnum):
 class Searcher(ABC):
     def search_row(self, row: str | int, row_fields: Iterable[str]) -> bool:
         """
-        Returns True when a row is eligible to be matched by this search
+        Check if row matches.
+
+        Returns:
+            True when a row is eligible to be matched by this search.
+
         """
         return True
 
@@ -35,31 +39,42 @@ class Searcher(ABC):
 
     def filtering_fields(self) -> bool:
         """
-        Returns True when this searcher is filtering based on the field names.
-        If this returns 'False' for a Searcher, there is no need to call the
-        'search_field' method.
+        If searcher is filtering based upon fields.
+
+        Returns:
+            True when this searcher is filtering based on the field names. If this returns 'False' for a Searcher, there is no need to call the 'search_field' method.
+
         """
         return False
 
     def search_field(self, name: str) -> bool:
         """
-        Returns True when field named `field` is eligible to be matched by this
-        search. This should *not* be called if filtering_fields() is returning
-        False - it is not guaranteed to succeed or behave sensibly.
+        If field can be searched.
+
+        Returns:
+            True when field named `field` is eligible to be matched by this search. This should *not* be called if filtering_fields() is returning False - it is not guaranteed to succeed or behave sensibly.
+
         """
         return True
 
     @abstractmethod
     def match(self, event: Event) -> bool:
         """
-        Returns True when an event matches this search
+        Event matches.
+
+        Returns:
+            True when an event matches this search
+
         """
 
     @abstractmethod
     def field_match(self, name: str, field: int | str) -> bool:
         """
-        Returns True when an event's field matches this search (presumes the
-        event already was matched by match(), above
+        Field matches.
+
+        Returns:
+            True when an event's field matches this search (presumes the event already was matched by match(), above)
+
         """
 
     @abstractmethod
@@ -104,8 +119,7 @@ class FilteringSearcher(Searcher):
     def search_row(self, row: str | int, row_fields: set[str]) -> bool:
         matches_rows = self.search_rows is None or row in self.search_rows
         matches_fields = (
-            not self.filtering_fields()
-            or len(self.search_fields.intersection(row_fields | set(("abbrev", "name")))) > 0
+            not self.filtering_fields() or len(self.search_fields.intersection(row_fields | {"abbrev", "name"})) > 0
         )
         return matches_rows and matches_fields
 
@@ -150,10 +164,7 @@ class TextSearcher(FilteringSearcher):
             if self.filtering_fields() and not self.search_field(name):
                 continue
             if self.hexargs_re.match(name):
-                if isinstance(value, str):
-                    search_value = hex(int(value, base=0))
-                else:
-                    search_value = hex(value)
+                search_value = hex(int(value, base=0)) if isinstance(value, str) else hex(value)
             else:
                 search_value = str(value)
             if self.search_term in search_value:
@@ -171,10 +182,7 @@ class TextSearcher(FilteringSearcher):
             if self.filtering_fields() and not self.search_field(name):
                 continue
             if self.hexargs_re.match(name):
-                if isinstance(value, str):
-                    search_value = hex(int(value, base=0))
-                else:
-                    search_value = hex(value)
+                search_value = hex(int(value, base=0)) if isinstance(value, str) else hex(value)
             else:
                 search_value = str(value)
             if self.search_term in search_value.lower():
@@ -343,6 +351,8 @@ class EventStreamDataSearch:
 
     def _event_key(self, event: Event) -> tuple[int, int, int]:
         """
+        Get event key for ordering.
+
         An event is ordered "earlier" in the search order primarily if its time
         is earlier, then the index of the rows, and finally by the event
         indices themselves (for two events which begin at the same time and are
