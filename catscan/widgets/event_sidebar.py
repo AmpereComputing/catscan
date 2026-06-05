@@ -27,7 +27,7 @@ class EventDetailTransaction(urwid.WidgetWrap):
     ) -> None:
         self.state = state
         if isinstance(txids, int):
-            self.txids = set([txids])
+            self.txids = {txids}
         else:
             self.txids = set(txids)
         self.relationship = relationship

@@ -76,7 +76,7 @@ class SummaryTable(urwid.WidgetWrap):
 class SummarySidebar(urwid.WidgetWrap):
     """
     This widget display a summary of the current selection as a histogram of
-    the selected events' abbreviations
+    the selected events' abbreviations.
     """
 
     def __init__(

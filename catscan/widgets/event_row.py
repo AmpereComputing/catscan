@@ -586,10 +586,9 @@ class EventRow(EventRowBase):
             has_focus = (selection_start <= i <= selection_end) != focus and self.state.has_focus
             more_left = self._more_left(self.data, i, first, start, end)
             more_right = self._more_right(self.data, i, last, start, end)
-            if (more_left or more_right) and len(events) == rows:
-                events = events[:-1]
+            display_events = events[:-1] if (more_left or more_right) and len(events) == rows else events
 
-            for l, event in enumerate(events):
+            for l, event in enumerate(display_events):
                 color_idx, text = self.render_event(event, cols_this_cycle)
 
                 if highlighting_search_row and self.state.searcher.match(event):
@@ -616,7 +615,7 @@ class EventRow(EventRowBase):
 
             empty_attr = f"{even_odd_focused(self.row_index, has_focus)}_event_row"
 
-            for l in range(len(events), rows):
+            for l in range(len(display_events), rows):
                 if more_left:
                     byte_string = (self.MORE_LEFT_CHAR + self.EMPTY_CHAR * (cols_this_cycle - 1)).encode()
                 elif more_right:
@@ -683,14 +682,15 @@ class EventRow(EventRowBase):
             more_right = self._more_right(self.data, i, last, start, end)
             empty_attr = f"{even_odd_focused(self.row_index, has_focus)}_event_row"
             character = character_bytes
+            height = item
             if item < 0:
-                item = 1
+                height = 1
                 character = non_empty_character_bytes
 
-            if (more_left or more_right) and item == rows:
-                item -= 1
+            if (more_left or more_right) and height == rows:
+                height -= 1
 
-            for l in range(item):
+            for l in range(height):
                 byte_strings[l] += character
                 color_idx = colors[i]
                 attr = f"event_color_reversed_{color_idx}_{even_odd_focused(self.row_index, has_focus)}"
@@ -698,7 +698,7 @@ class EventRow(EventRowBase):
                     attr += self.active_background
                 attrs[l].append((attr, len(character)))
 
-            for l in range(item, rows):
+            for l in range(height, rows):
                 if more_left:
                     byte_string = self.MORE_LEFT_CHAR.encode()
                 elif more_right:
@@ -868,3 +868,4 @@ class EventRow(EventRowBase):
             selection = self.mouse_to_next_selection(col, reverse=True)
             if selection:
                 self.on_make_selection(selection)
+        return None

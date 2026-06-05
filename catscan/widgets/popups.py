@@ -14,7 +14,7 @@ from catscan.widgets.button import ReleaseButton
 
 class PopupCoords(NamedTuple):
     """
-    Represents the calculated coordinates of a Popup Widget
+    Represents the calculated coordinates of a Popup Widget.
     """
 
     left: int
@@ -92,9 +92,8 @@ class ClosablePopup(urwid.WidgetWrap):
         key = self._w.keypress(size, key)
         if key is None:
             return None
-        if key in action_keypresses[ACTIONS.POPUP_CLOSE]:
-            if self.on_close():
-                return None
+        if key in action_keypresses[ACTIONS.POPUP_CLOSE] and self.on_close():
+            return None
         return key
 
 

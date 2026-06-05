@@ -6,10 +6,10 @@ import atexit
 import json
 import logging
 import os
+from contextlib import suppress
 from fractions import Fraction
 from threading import Thread
 from typing import NamedTuple
-from contextlib import suppress
 
 from perf_streams.event_stream import Event
 

@@ -152,7 +152,7 @@ class SubsetResourceView(ResourceView):
 
     def update_stream_data(self, stream_data: EventStreamData) -> None:
         super().update_stream_data(stream_data)
-        all_events = set(row.name for row in self.stream_data.events())
+        all_events = {row.name for row in self.stream_data.events()}
         new_events = [event for event in self.events if event in all_events]
         if self.events != new_events:
             self.events = new_events

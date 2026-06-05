@@ -109,9 +109,8 @@ class StatusBar(urwid.WidgetWrap):
 
         def reset_suggestions(self):
             self.history.reset(self._text_with_prefix)
-            if self.completion is not None:
-                if adjusted_text := self.completion.reset(self.box.edit_text):
-                    self._try_assign_text(adjusted_text)
+            if self.completion is not None and (adjusted_text := self.completion.reset(self.box.edit_text)):
+                self._try_assign_text(adjusted_text)
 
         def go_to_start(self):
             self.reset_suggestions()

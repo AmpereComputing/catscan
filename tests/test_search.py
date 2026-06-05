@@ -95,10 +95,10 @@ class TestSearch(CatscanDataTest):
 
     def test_get_search_fields(self):
         inum_fields = FilteringSearcher.get_search_fields(self.esd, ["*.inum"])
-        self.assertEqual(inum_fields, set(("core.inum",)))
+        self.assertEqual(inum_fields, {"core.inum"})
 
         hit_fields = FilteringSearcher.get_search_fields(self.esd, ["*.hit"])
-        self.assertEqual(hit_fields, set(("core.icache.hit", "core.btb.hit")))
+        self.assertEqual(hit_fields, {"core.icache.hit", "core.btb.hit"})
 
     def test_basic_text_search(self):
         main_btb_searcher = TextSearcher("main_btb", None, None, False, hex_args_to_re(["program_counter"]))

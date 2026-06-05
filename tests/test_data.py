@@ -100,7 +100,7 @@ class TestData(CatscanDataTest):
         lookup = writer.define_event("core.lookup", "A instruction is looked up in cache structure")
         decode = writer.define_event("core.decode", "An instruction is decoded")
         issue = writer.define_event("core.issue", "An operation is issued")
-        exec = writer.define_event("core.exec", "An operation is executed")
+        execute = writer.define_event("core.exec", "An operation is executed")
         commit = writer.define_event("core.commit", "An instruction is committed")
         allocate = writer.define_event("core.allocate", "Instruction resource allocated")
         deallocate = writer.define_event("core.deallocate", "Instruction resource deallocated")
@@ -145,17 +145,17 @@ class TestData(CatscanDataTest):
         inst_tx_to_buffer_id = {}
 
         def issued(op: Event) -> bool:
-            return any([e.definition_id == issue.id for e in op.events])
+            return any(e.definition_id == issue.id for e in op.events)
 
         def fetched(fetch: Event) -> bool:
-            return any([e.definition_id == fetch.id for e in fetch.events])
+            return any(e.definition_id == fetch.id for e in fetch.events)
 
         def decoded(instruction: Event) -> bool:
-            return any([e.definition_id == decode.id for e in instruction.events])
+            return any(e.definition_id == decode.id for e in instruction.events)
 
         def ready_to_commit(instruction: Event) -> bool:
             return decoded(instruction) and all(
-                [any([e.definition_id == exec.id for e in c.events]) for c in instruction.children]
+                any(e.definition_id == execute.id for e in c.events) for c in instruction.children
             )
 
         for cycle in range(70):
@@ -180,7 +180,7 @@ class TestData(CatscanDataTest):
             while ops and issued(ops[0]) and executed_ops < cls.MACHINE_WIDTH:
                 executed_ops += 1
                 op = ops.popleft()
-                writer.post_event(exec, time=time, transaction=op)
+                writer.post_event(execute, time=time, transaction=op)
                 writer.end_transaction(op, time=time)
 
             # issue up to MACHINE_WIDTH decoded operations
@@ -292,9 +292,9 @@ class TestData(CatscanDataTest):
         self.assertEqual(txn.end_time, 15300)
 
         # four children: 4 ops (83, 84, 85, 86)
-        self.assertEqual(txn.children, set((83, 84, 85, 86)))
+        self.assertEqual(txn.children, {83, 84, 85, 86})
         # one parent, the fetch (68)
-        self.assertEqual(txn.parents, set((68,)))
+        self.assertEqual(txn.parents, {68})
 
     def test_event_counts(self):
         # Check per-event counts are accurate

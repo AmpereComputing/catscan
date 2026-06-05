@@ -257,7 +257,7 @@ class Top(urwid.widget.Widget):
     def usable_width(self) -> int:
         """
         The number of columns devoted to the right-hand sidebar portion of the
-        screen
+        screen.
         """
         usable = self.cached_maxcol - self.state.column_header_width - 1
         if not self.state.selection:
@@ -590,7 +590,7 @@ class Top(urwid.widget.Widget):
         """
         Zoom the UI out so the same graphical area covers 1/2 as much time as
         before, centered around column `column`, returning True if the zoom
-        level changed, or False if it was unable to
+        level changed, or False if it was unable to.
         """
         return self._zoom_around(
             new_cycles_per_char=max(Top._min_cycles_per_char, self.state.cycles_per_char / 2), column=column
@@ -600,7 +600,7 @@ class Top(urwid.widget.Widget):
         """
         Zoom the UI out so the same graphical area covers 2x as much time,
         centered around column `column`, returning True if the zoom changed, or
-        False if it was unable to
+        False if it was unable to.
         """
         return self._zoom_around(
             new_cycles_per_char=min(Top._max_cycles_per_char, self.state.cycles_per_char * 2), column=column
@@ -762,10 +762,7 @@ class Top(urwid.widget.Widget):
         return True
 
     def go_to_time(self, time: int, max_zoom: Fraction | None = None) -> bool:
-        if max_zoom:
-            new_zoom = min(self.state.cycles_per_char, max_zoom)
-        else:
-            new_zoom = self.state.cycles_per_char
+        new_zoom = min(self.state.cycles_per_char, max_zoom) if max_zoom else self.state.cycles_per_char
         left_padding_ps = round(((self.usable_width * new_zoom - 1) * self.state.ps_per_cycle) / 2)
 
         new_state = self.state.copy_with(start_ps=time - left_padding_ps, cycles_per_char=new_zoom)
@@ -1552,10 +1549,7 @@ class Top(urwid.widget.Widget):
 
         ret = key
         for num_recent_keys in range(len(recent_keys) + 1):
-            if num_recent_keys:
-                keys = "-".join(recent_keys[-num_recent_keys:] + [key])
-            else:
-                keys = key
+            keys = "-".join(recent_keys[-num_recent_keys:] + [key]) if num_recent_keys else key
             if not self.handle_keypress(size, keys):
                 ret = None
                 break

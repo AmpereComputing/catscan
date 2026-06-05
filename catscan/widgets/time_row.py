@@ -46,7 +46,7 @@ class TimeRow(urwid.widget.Widget):
 
     def _ps_to_column(self, ps: int) -> int:
         """
-        Convert a time in picoseconds to a character index in the time row
+        Convert a time in picoseconds to a character index in the time row.
         """
         return (ps - self.state.start_ps) // (self.state.ps_per_cycle * self.state.cycles_per_char)
 
@@ -81,9 +81,7 @@ class TimeRow(urwid.widget.Widget):
             ps_granularity *= 2
 
         start_label_time = (start_ps // ps_granularity) * ps_granularity
-        potential_label_times = [
-            t for t in range(start_label_time, end_ps + round(ps_granularity), round(ps_granularity))
-        ]
+        potential_label_times = list(range(start_label_time, end_ps + round(ps_granularity), round(ps_granularity)))
 
         visible_times = []
         for time in potential_label_times:

@@ -109,10 +109,7 @@ class Views(View):
     def __getitem__(self, fullname) -> View:
         name = fullname.replace(f"{self.name}.", "") if self.name else fullname
         parts = name.split(".")
-        if len(parts) > 1:
-            local_name = f"{self.name}.{parts[0]}" if self.name else parts[0]
-        else:
-            local_name = fullname
+        local_name = (f"{self.name}.{parts[0]}" if self.name else parts[0]) if len(parts) > 1 else fullname
         view = self._views[local_name]
         if len(parts) == 1 or not isinstance(view, Views):
             return view
@@ -294,7 +291,7 @@ class LazyEventListWalker(urwid.ListWalker):
     def __len__(self):
         if self._total_rows is None:
             expand, all_rows = self._all_rows_func()
-            group_rows = len(set(ed.group for ed in all_rows)) if self._has_groups else 0
+            group_rows = len({ed.group for ed in all_rows}) if self._has_groups else 0
             event_rows = sum(max(1, ed.max_events_per_time()) for ed in all_rows) if expand else len(all_rows)
             self._total_rows = event_rows + group_rows
 
@@ -340,10 +337,7 @@ class LazyEventListBox(urwid.ListBox):
         mid, top, _bottom = self.calculate_visible(self._rendered_size, focus)
         start_row = top.trim
 
-        if top.fill:
-            pos = top.fill[-1].position
-        else:
-            pos = mid.focus_pos
+        pos = top.fill[-1].position if top.fill else mid.focus_pos
 
         expand, all_rows = self._all_rows_func()
         if not expand:
@@ -474,7 +468,7 @@ class EventView(urwid.WidgetWrap, View):
 
     def total_rows(self):
         if self._total_rows is None:
-            group_rows = len(set(ed.group for ed in self.iter_event_rows())) if self.has_groups else 0
+            group_rows = len({ed.group for ed in self.iter_event_rows()}) if self.has_groups else 0
             event_rows = len(self.iter_event_rows())
             self._total_rows = group_rows + event_rows
 
