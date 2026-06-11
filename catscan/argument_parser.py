@@ -6,6 +6,7 @@ import os
 import shlex
 import sys
 from collections.abc import Iterable
+from typing import Any
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -19,7 +20,7 @@ class ArgumentParser(argparse.ArgumentParser):
         fromfile_prefix_chars: str | None = None,
         epilog: str = "",
         formatter_class: type[argparse.HelpFormatter] = argparse.RawTextHelpFormatter,
-        **kwargs,
+        **kwargs: Any,
     ):
         self.enable_comments = comments
         self.fromfile_prefix_chars = fromfile_prefix_chars or "@"

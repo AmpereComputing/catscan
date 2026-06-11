@@ -1,6 +1,8 @@
 # Copyright (c) 2024-2025 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
+from typing import Any
+
 import urwid
 
 
@@ -34,21 +36,21 @@ class Release(urwid.WidgetWrap):
 class UnpaddedButton(urwid.Button):
     """Button without padding and '</>' characters."""
 
-    def __init__(self, label, *args, **kwargs):
+    def __init__(self, label: str, *args: Any, **kwargs: Any):
         super().__init__(label, *args, **kwargs)
         super(urwid.Button, self).__init__(urwid.Columns([self._label]))
 
 
-def ReleaseButton(*args, allow_other_press=False, **kwargs):  # noqa: N802
+def ReleaseButton(*args: Any, allow_other_press: bool = False, **kwargs: Any) -> Release:  # noqa: N802
     """Create a button that listens on mouse release."""
     return Release(urwid.Button(*args, **kwargs), allow_other_press=allow_other_press)
 
 
-def ReleaseUnpaddedButton(*args, allow_other_press=False, **kwargs):  # noqa: N802
+def ReleaseUnpaddedButton(*args: Any, allow_other_press: bool = False, **kwargs: Any) -> Release:  # noqa: N802
     """Create a button that listens on mouse release."""
     return Release(UnpaddedButton(*args, **kwargs), allow_other_press=allow_other_press)
 
 
-def ReleaseCheckBox(*args, allow_other_press=False, **kwargs):  # noqa: N802
+def ReleaseCheckBox(*args: Any, allow_other_press: bool = False, **kwargs: Any) -> Release:  # noqa: N802
     """Create a checkbox that listens on mouse release."""
     return Release(urwid.CheckBox(*args, **kwargs), allow_other_press=allow_other_press)

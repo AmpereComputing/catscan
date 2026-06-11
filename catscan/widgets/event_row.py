@@ -6,6 +6,7 @@ from collections.abc import Callable
 from enum import Enum
 from fractions import Fraction
 from functools import lru_cache
+from typing import Any
 
 import urwid
 
@@ -370,7 +371,7 @@ class EventRow(EventRowBase):
         super().__init__()
 
     @property
-    def expanded(self):
+    def expanded(self) -> bool:
         return self.state.expand_rows and self.expanded_allowed
 
     def row_id(self) -> tuple[RowType, str]:
@@ -432,7 +433,7 @@ class EventRow(EventRowBase):
             cycles_per_index,
         )
 
-    def _more_left(self, data, index, first, start, end):
+    def _more_left(self, data: tuple[list[int], list[int]], index: int, first: int, start: int, end: int) -> bool:
         if index != 0 or first >= index:
             return False
         if self.active_background:
@@ -440,7 +441,7 @@ class EventRow(EventRowBase):
 
         return all((item if isinstance(item, int) else len(item)) == 0 for item in data[: self.MORE_THRESHOLD])
 
-    def _more_right(self, data, index, last, start, end):
+    def _more_right(self, data: tuple[list[int], list[int]], index: int, last: int, start: int, end: int) -> bool:
         if index != len(data) - 1 or last <= index:
             return False
         if self.active_background:
@@ -738,13 +739,13 @@ class EventRow(EventRowBase):
         return urwid.canvas.TextCanvas(lines, attrs)
 
     @property
-    def _transaction_row(self):
+    def _transaction_row(self) -> bool:
         return isinstance(self.ed, TransactionEventData)
 
-    def _make_selection(self, **kwargs) -> Selection:
+    def _make_selection(self, **kwargs: Any) -> Selection:
         return Selection(event_row=self.ed.key(), within_transaction=self._transaction_row, **kwargs)
 
-    def _adjust_selection(self, event: Event, **kwargs) -> Selection:
+    def _adjust_selection(self, event: Event, **kwargs: Any) -> Selection:
         return self.state.selection.adjust_within_row(event, duration=self.state.ps_per_cycle, **kwargs)
 
     def keypress(
@@ -828,7 +829,7 @@ class EventRow(EventRowBase):
         event = self.data[data_idx][row]
         return self._make_selection(event=event, duration=self.state.ps_per_cycle)
 
-    def mouse_to_next_selection(self, col: int, reverse=False) -> Selection:
+    def mouse_to_next_selection(self, col: int, reverse: bool = False) -> Selection:
         if self.expanded:
             col_idx = col - self.state.column_header_width
             start_ps, _end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)

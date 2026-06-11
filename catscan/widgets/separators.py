@@ -13,10 +13,10 @@ class HorizontalBorder(urwid.widget.Widget):
     def __init__(
         self,
         state: CatscanState,
-        border_char="─",
-        right_char="┘",
-        middle_char="┴",
-        within_view=False,
+        border_char: str = "─",
+        right_char: str = "┘",
+        middle_char: str = "┴",
+        within_view: bool = False,
     ) -> None:
         self.state = state
 

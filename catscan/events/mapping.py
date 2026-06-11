@@ -8,6 +8,7 @@ import struct
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from types import MethodType
+from typing import Any
 
 import capstone
 from perf_streams.event_stream import Event
@@ -179,9 +180,9 @@ class ValueMapAbbreviation(DynamicAbbreviation):
         patterns: list[str],
         value_suffix: str,
         value_map: dict[int, str],
-        default=None,
+        default: str | None = None,
         exclude: list[str] | None = None,
-        default_on_missing_value_suffix=False,
+        default_on_missing_value_suffix: bool = False,
     ):
         self.value_suffix = value_suffix
         self.value_map = value_map
@@ -225,12 +226,12 @@ disassembly_architectures = {
 class Mapper:
     def __init__(
         self,
-        event_groups=None,
-        hex_args=None,
-        inst_args=None,
-        static_abbreviations=None,
-        dynamic_abbreviations=None,
-        instruction_arch="arm64",
+        event_groups: list[str] = None,
+        hex_args: list[str] | None = None,
+        inst_args: list[str] | None = None,
+        static_abbreviations: dict | None = None,
+        dynamic_abbreviations: list | None = None,
+        instruction_arch: str = "arm64",
     ):
         if event_groups:
             options = "|".join([f"({g})" for g in event_groups])
@@ -247,7 +248,7 @@ class Mapper:
         disasm_arch, disasm_mode = disassembly_architectures[instruction_arch]
         self.disassembler = capstone.Cs(disasm_arch, disasm_mode)
 
-    def process(self, name: str, *, default_group: str | None = None):
+    def process(self, name: str, *, default_group: str | None = None) -> tuple[str, str]:
         default_group = default_group or "Events"
         if self.event_groups:
             m = re.match(self.event_groups, name)
@@ -255,7 +256,7 @@ class Mapper:
                 return (m.group("prefix"), m.group("tail"))
         return default_group, name
 
-    def event_name_to_abbrev(self, event: Event):
+    def event_name_to_abbrev(self, event: Event) -> str:
         name = event.name
         if name not in self.abbreviation_lookups:
             self.abbreviation_lookups[name] = [
@@ -278,7 +279,7 @@ class Mapper:
 
         return None
 
-    def rename_from_list(self, index, values: list[str], default: str | None = None) -> str:
+    def rename_from_list(self, index: Any, values: list[str], default: str | None = None) -> str:
         if not isinstance(index, int):
             return index
 
@@ -288,7 +289,7 @@ class Mapper:
             logging.warning(f"Value of {index} out-of-bounds for rename")
             return str(index) if default is None else default
 
-    def rename_suffix_from_list(self, event, suffix, values, default=None):
+    def rename_suffix_from_list(self, event: Event, suffix: str, values: list[str], default: str | None = None) -> str:
         try:
             index = int(self.value_with_suffix(event, suffix))
             return values[index]
@@ -298,7 +299,7 @@ class Mapper:
         except ValueError:
             return index
 
-    def disasm_single_instruction(self, value):
+    def disasm_single_instruction(self, value: Any) -> str:
         try:
             instructions = list(self.disassembler.disasm_lite(struct.pack("<I", value), 0x1000))
             assert len(instructions) == 1
@@ -325,6 +326,6 @@ class Mapper:
 
         args.update(changes)
 
-    def _fields_to_regex(self, fields):
+    def _fields_to_regex(self, fields: list[str]) -> re.Pattern:
         re_str = "^((" + ")|(".join(fields) + "))$"
         return re.compile(re_str)

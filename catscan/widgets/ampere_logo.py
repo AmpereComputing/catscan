@@ -6,6 +6,9 @@ from typing import NamedTuple
 
 import urwid
 
+Coord = tuple[float, float]
+Circle = tuple[float, float, float]
+
 
 class AmpereLogo(urwid.widget.Widget):
     """
@@ -21,15 +24,15 @@ class AmpereLogo(urwid.widget.Widget):
 
     class AmpereLogoFormulas(NamedTuple):
         # line format: (m, b) in `y=m*x + b`
-        left_outside_line: tuple[float, float]
-        left_inside_line: tuple[float, float]
-        left_inside_gap_line: tuple[float, float]
-        right_inside_line: tuple[float, float]
-        right_outside_line: tuple[float, float]
-        bottom_line: tuple[float, float]
+        left_outside_line: Coord
+        left_inside_line: Coord
+        left_inside_gap_line: Coord
+        right_inside_line: Coord
+        right_outside_line: Coord
+        bottom_line: Coord
         # circle format: (cx, cy, r) where cx and cy are the coordinates of the
-        inner_circle: tuple[float, float, float]
-        outer_circle: tuple[float, float, float]
+        inner_circle: Circle
+        outer_circle: Circle
 
     # Set of formulas which, when combined, circumscribe the Ampere logo
     FORMULAS = AmpereLogoFormulas(
@@ -50,48 +53,48 @@ class AmpereLogo(urwid.widget.Widget):
         self.pct_loaded = 0.0
         super().__init__()
 
-    def translate(self, orig_coords: (float, float), by: (float, float)) -> (float, float):
+    def translate(self, orig_coords: Coord, by: Coord) -> Coord:
         x, y = orig_coords
         by_x, by_y = by
         return (x + by_x, y + by_y)
 
-    def translate_mxb(self, orig_mxb: (float, float), by: (float, float)) -> (float, float):
+    def translate_mxb(self, orig_mxb: Coord, by: Coord) -> Coord:
         m, b = orig_mxb
         new_x, new_y = self.translate((0, b), by)
         new_b = new_y - m * new_x
         return (m, new_b)
 
-    def scale(self, orig_coords: (float, float), by: float, around: (float, float) = (0, 0)) -> (float, float):
+    def scale(self, orig_coords: Coord, by: float, around: Coord = (0, 0)) -> Coord:
         ax, ay = around
         translated = self.translate(orig_coords, (-ax, -ay))
         tx, ty = translated
         new_coords = (tx * by, ty * by)
         return self.translate(new_coords, around)
 
-    def scale_mxb(self, orig_mxb: (float, float), by: float, around: (float, float) = (0, 0)) -> (float, float):
+    def scale_mxb(self, orig_mxb: Coord, by: float, around: Coord = (0, 0)) -> Coord:
         m, b = orig_mxb
         new_x, new_y = self.scale((0, b), by, around)
         new_b = new_y - m * new_x
         return (m, new_b)
 
-    def under_line(self, coords: (float, float), line: (float, float)) -> bool:
+    def under_line(self, coords: Coord, line: Coord) -> bool:
         m, b = line
         x, y = coords
         return y < (m * x + b)
 
-    def inside_circle(self, coords: (float, float), circle: (float, float, float)) -> bool:
+    def inside_circle(self, coords: Coord, circle: (float, float, float)) -> bool:
         cx, cy, r = circle
         x, y = self.translate(coords, (-cx, -cy))
         return math.hypot(x, y) < r
 
-    def intersection(self, line_a: (float, float), line_b: (float, float)) -> (float, float):
+    def intersection(self, line_a: Coord, line_b: Coord) -> Coord:
         am, ab = line_a
         bm, bb = line_b
         x = (ab - bb) / (bm - am)
         y = (am * x) + ab
         return (x, y)
 
-    def in_ampere_logo(self, formulas, coords: tuple[float, float]) -> bool:
+    def in_ampere_logo(self, formulas: AmpereLogoFormulas, coords: Coord) -> bool:
         if self.under_line(coords, formulas.bottom_line):
             return False
         # The 'tent' portion of the A
@@ -114,7 +117,7 @@ class AmpereLogo(urwid.widget.Widget):
             )
         )
 
-    def get_bounding_box(self, formulas) -> tuple[tuple[float, float], tuple[float, float]]:
+    def get_bounding_box(self, formulas: AmpereLogoFormulas) -> tuple[Coord, Coord]:
         top = self.intersection(formulas.left_outside_line, formulas.right_outside_line)
         max_y = top[1]
         min_y = formulas.bottom_line[1]
@@ -125,7 +128,9 @@ class AmpereLogo(urwid.widget.Widget):
 
         return ((min_x, min_y), (max_x, max_y))
 
-    def recalc(self, max_xrange, max_yrange, translate_lines=(0, 0), translate_circles=(0, 0)):
+    def recalc(
+        self, max_xrange: float, max_yrange: float, translate_lines: Coord = (0, 0), translate_circles: Coord = (0, 0)
+    ) -> "AmpereLogo.AmpereLogoFormulas":
         # Find the bounding box of the 'master' formula
         ((min_x, min_y), (max_x, max_y)) = self.get_bounding_box(AmpereLogo.FORMULAS)
 
@@ -136,7 +141,7 @@ class AmpereLogo(urwid.widget.Widget):
             (max_yrange - ((max_y - min_y) * scale_by)) / 2,
         )
 
-        def change_line(prev, reverse_extra_y=False):
+        def change_line(prev: Coord, reverse_extra_y: bool = False) -> Coord:
             new_line = self.translate_mxb(prev, pre_translate_by)
             new_line = self.scale_mxb(new_line, scale_by)
             new_line = self.translate_mxb(new_line, post_translate_by)
@@ -144,7 +149,7 @@ class AmpereLogo(urwid.widget.Widget):
                 return self.translate_mxb(new_line, (translate_lines[0], -translate_lines[1]))
             return self.translate_mxb(new_line, translate_lines)
 
-        def change_circle(prev):
+        def change_circle(prev: Circle) -> Circle:
             cx, cy, r = prev
             new_center = self.translate((cx, cy), pre_translate_by)
             new_center = self.scale(new_center, scale_by)
@@ -164,7 +169,7 @@ class AmpereLogo(urwid.widget.Widget):
             outer_circle=change_circle(AmpereLogo.FORMULAS.outer_circle),
         )
 
-    def update_pct_loaded(self, pct_loaded):
+    def update_pct_loaded(self, pct_loaded: float):
         self.pct_loaded = pct_loaded
         self._invalidate()
 

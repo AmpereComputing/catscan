@@ -7,7 +7,7 @@ from collections.abc import Callable
 import urwid
 
 from catscan.commands import CommandCompletion, Commands, completable_command_definitions
-from catscan.completion import HistoricalCompletion
+from catscan.completion import FilteredSuggestions, HistoricalCompletion
 from catscan.state import CatscanState
 from catscan.user_input import ACTIONS, action_keypresses
 from catscan.util import str_fit_width, str_width
@@ -59,22 +59,28 @@ class StatusBar(urwid.WidgetWrap):
     class Mode:
         """Status-bar mode."""
 
-        def __init__(self, prefix: str, event: Callable, history=None, completion=None):
+        def __init__(
+            self,
+            prefix: str,
+            event: Callable,
+            history: FilteredSuggestions | None = None,
+            completion: FilteredSuggestions | None = None,
+        ):
             self.completion_event = event
             self.box = urwid.Edit(prefix, "")
             self._history_prefix = "" if history is None else prefix
             self.history = history or HistoricalCompletion()
             self.completion = completion
 
-        def enter(self, parent):
+        def enter(self, parent: "StatusBar"):
             parent._set_bar_widget(self.box)
             self.box.edit_text = ""
 
         @property
-        def _text_with_prefix(self):
+        def _text_with_prefix(self) -> str:
             return self._history_prefix + self.box.edit_text
 
-        def exit(self):
+        def exit(self) -> str:
             text = self.box.edit_text
             if text.strip():
                 self.history.add(self._text_with_prefix)

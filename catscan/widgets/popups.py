@@ -23,7 +23,7 @@ class PopupCoords(NamedTuple):
     height: int
 
     @classmethod
-    def from_limits(cls, max_height: int, max_width: int, available_height: int, available_width: int):
+    def from_limits(cls, max_height: int, max_width: int, available_height: int, available_width: int) -> "PopupCoords":
         popup_width = min(max_width, available_width)
         popup_height = min(max_height, available_height)
         return cls(
@@ -34,18 +34,18 @@ class PopupCoords(NamedTuple):
         )
 
     @property
-    def right(self):
+    def right(self) -> int:
         return self.left + self.width
 
     @property
-    def bottom(self):
+    def bottom(self) -> int:
         return self.top + self.height
 
     @property
-    def size(self):
+    def size(self) -> tuple[int, int]:
         return (self.width, self.height)
 
-    def is_within(self, col, row):
+    def is_within(self, col: int, row: int) -> bool:
         return col >= self.left and col <= self.right and row >= self.top and row <= self.bottom
 
 
@@ -71,10 +71,10 @@ class ClosablePopup(urwid.WidgetWrap):
 
         super().__init__(self.line_box)
 
-    def close(self, widget, user_args=None):
+    def close(self, _widget, _user_args=None) -> bool:
         return self.on_close()
 
-    def coords(self, size: tuple[int, int]):
+    def coords(self, size: tuple[int, int]) -> PopupCoords:
         return PopupCoords.from_limits(self.desired_height, self.desired_width, size[1], size[0])
 
     def overlay(self, canvas: urwid.Canvas, size: tuple[int, int], focus: bool = False) -> urwid.CompositeCanvas:
@@ -120,7 +120,7 @@ class Messages(ClosablePopup):
         )
 
     @property
-    def message_widgets(self):
+    def message_widgets(self) -> list[urwid.Text]:
         return [urwid.Text(message) for message in self.state.messages]
 
     def update_state(self, new_state: CatscanState) -> None:

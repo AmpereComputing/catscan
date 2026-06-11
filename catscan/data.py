@@ -23,7 +23,7 @@ import pickle
 import zlib
 from collections.abc import Callable
 from enum import StrEnum, auto
-from typing import Self
+from typing import Any, Self
 
 from perf_streams.event_stream import Event, EventStreamReader
 
@@ -335,12 +335,12 @@ class EventStreamData:
         self._events = events or []
         self._event_filters = event_filters or trace_events.EventFilters()
 
-        self.event_rows = {}
-        self.event_row_keys = ()
-        self.transactions = {}
+        self.event_rows: dict[str, EventData] = {}
+        self.event_row_keys: tuple[int, ...] = ()
+        self.transactions: dict[int, Transaction] = {}
 
-        self.transaction_event_rows = {}
-        self._transaction_specifications = []
+        self.transaction_event_rows: dict[int, TransactionEventData] = {}
+        self._transaction_specifications: list[TransactionSpecification] = []
 
         self._post_to_tx = trace_events.ResourceView.setup_tx_data(post_to_tx or [])
         self._pull_from_tx = trace_events.ResourceView.setup_tx_data(pull_from_tx or [])
@@ -682,10 +682,10 @@ class EventStreamData:
     def __iter__(self) -> Iterator[EventData]:
         return iter(self.events())
 
-    def events(self, **kwargs):
+    def events(self, **kwargs: Any) -> "EventStreamDataEventView":
         return EventStreamDataEventView(self, **kwargs)
 
-    def transaction_events(self, **kwargs):
+    def transaction_events(self, **kwargs: Any) -> "EventStreamDataTransactionView":
         return EventStreamDataTransactionView(self, **kwargs)
 
 
@@ -694,37 +694,37 @@ class EventStreamDataView:
         self.esd = esd
         self._keys = keys
 
-    def __getattr__(self, name: str):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self.esd, name)
 
-    def keys(self):
+    def keys(self) -> list:
         return self._keys
 
-    def values(self):
+    def values(self) -> Iterator:
         return (self.get(key) for key in self._keys)
 
     class Iter:
-        def __init__(self, view):
+        def __init__(self, view: "EventStreamDataView"):
             self._view = view
             self._next_index = 0
 
-        def __iter__(self):
+        def __iter__(self) -> "EventStreamDataView.Iter":
             return self
 
-        def __next__(self):
+        def __next__(self) -> EventData:
             if self._next_index < len(self._view._keys):
                 next_key = self._view._keys[self._next_index]
                 self._next_index += 1
                 return self._view.get(next_key)
             raise StopIteration()
 
-    def __iter__(self):
+    def __iter__(self) -> Iter:
         return self.Iter(self)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._keys)
 
-    def within_indicies(self, start: int, stop: int):
+    def within_indicies(self, start: int, stop: int) -> Iterator:
         return islice(self.values(), start, stop)
 
 
@@ -735,18 +735,18 @@ class EventStreamDataEventView(EventStreamDataView):
         super().__init__(esd, esd.event_row_keys if keys is None else keys)
 
     @property
-    def _all_keys(self):
+    def _all_keys(self) -> bool:
         return self._keys == self.esd.event_row_keys
 
-    def values(self):
+    def values(self) -> Iterator[EventData]:
         if self._all_keys:
             return self.esd.event_rows.values()
         return (self.esd.event_rows[key] for key in self._keys)
 
-    def get(self, key):
+    def get(self, key: str) -> EventData:
         return self.esd.event_rows[key]
 
-    def key_of(self, event: Event):
+    def key_of(self, event: Event) -> str:
         return event.name
 
     def name_of(self, key: str) -> str:
@@ -760,18 +760,18 @@ class EventStreamDataTransactionView(EventStreamDataView):
         super().__init__(esd, list(esd.transaction_event_rows.keys()) if keys is None else keys)
 
     @property
-    def _all_keys(self):
+    def _all_keys(self) -> bool:
         return self._keys == self.esd.transaction_event_rows
 
-    def values(self):
+    def values(self) -> Iterator[TransactionEventData]:
         if self._all_keys:
             return self.transaction_event_rows.values()
         return (self.esd.transaction_event_rows[key] for key in self._keys)
 
-    def get(self, key):
+    def get(self, key: int) -> TransactionEventData:
         return self.esd.transaction_event_rows[key]
 
-    def key_of(self, event: Event):
+    def key_of(self, event: Event) -> Any:
         return event.data.get("txid")
 
     def name_of(self, key: int) -> str:
@@ -786,7 +786,7 @@ class FilePctReporter(IOBase):
     a file.
     """
 
-    def __init__(self, filename, pct_loaded_callback):
+    def __init__(self, filename: str, pct_loaded_callback: Callable):
         self._filename = filename
         self._file_size = os.path.getsize(filename)
         self._pct_loaded = 0
@@ -795,14 +795,14 @@ class FilePctReporter(IOBase):
         self._updates_per_check = 2
         self._consec_without_update = 0
 
-    def __enter__(self):
+    def __enter__(self) -> "FilePctReporter":
         self._file = open(self._filename, "rb").__enter__()
         return self
 
-    def __exit__(self, exc_type, exc_value, traceback):
+    def __exit__(self, exc_type, exc_value, traceback):  # noqa: ANN001, ANN204
         return self._file.__exit__(exc_type, exc_value, traceback)
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         assert "read" not in name, "Failed to hook `read`-related method of FilePctReporter"
         return getattr(self._file, name)
 
@@ -819,15 +819,15 @@ class FilePctReporter(IOBase):
                     self._updates_per_check *= 2
                     self._consec_without_update = 0
 
-    def read(self, *args, **kwargs):
+    def read(self, *args: Any, **kwargs: Any) -> bytes:
         self._check_pct()
         return self._file.read(*args, **kwargs)
 
-    def readinto(self, *args, **kwargs):
+    def readinto(self, *args: Any, **kwargs: Any) -> int:
         self._check_pct()
         return self._file.readinto(*args, **kwargs)
 
-    def readline(self, *args, **kwargs):
+    def readline(self, *args: Any, **kwargs: Any) -> bytes:
         self._check_pct()
         return self._file.readline(*args, **kwargs)
 
@@ -852,8 +852,8 @@ def get_event_data(
     pull_from_tx: list[str],
     occupancy: list[str],
     pct_loaded_callback: Callable,
-    convert_enumerations=True,
-    **view_options,
+    convert_enumerations: bool = True,
+    **view_options: Any,
 ) -> EventStreamData:
     esd = EventStreamData(
         filename,

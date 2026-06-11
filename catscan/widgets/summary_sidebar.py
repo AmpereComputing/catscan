@@ -106,7 +106,7 @@ class SummarySidebar(urwid.WidgetWrap):
         self.table.update_stream_data(stream_data)
         self._invalidate()
 
-    def clear_selection(self, widget):
+    def clear_selection(self, _widget) -> bool:
         return self.on_clear_selection()
 
     def needs_scrollbar(self, size: tuple[int, int]) -> bool:

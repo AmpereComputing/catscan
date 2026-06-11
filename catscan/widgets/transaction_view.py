@@ -3,7 +3,7 @@
 
 from typing import Any
 
-from catscan.data import Event
+from catscan.data import Event, EventStreamDataTransactionView, TransactionEventData
 from catscan.widgets.event_row import EventRow
 from catscan.widgets.event_view import EventView
 
@@ -16,11 +16,11 @@ class TransactionEventRow(EventRow):
     ]
 
     @property
-    def level(self):
+    def level(self) -> int:
         return self.ed.level
 
     @property
-    def level_char(self):
+    def level_char(self) -> str:
         return self.LEVEL_CHARS[self.level % len(self.LEVEL_CHARS)]
 
     def get_column_header(self) -> str:
@@ -37,13 +37,13 @@ class TransactionView(EventView):
     Display rows of transactions with their respective events.
     """
 
-    def data_view(self, **kwargs):
+    def data_view(self, **kwargs: Any) -> EventStreamDataTransactionView:
         return self.stream_data.transaction_events(**kwargs)
 
-    def iter_event_rows(self, **kwargs):
+    def iter_event_rows(self, **kwargs: Any) -> EventStreamDataTransactionView:
         return self.stream_data.transaction_events(**kwargs)
 
-    def create_row(self, row: Any, row_index: int, **kwargs):
+    def create_row(self, row: TransactionEventData, row_index: int, **kwargs: Any) -> TransactionEventRow:
         return TransactionEventRow(
             row,
             self.state,
