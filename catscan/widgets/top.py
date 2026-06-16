@@ -4,11 +4,14 @@
 import logging
 import os
 import re
+from argparse import Namespace
+from asyncio import Future
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from enum import StrEnum, auto
 from fractions import Fraction
 from sys import maxsize
+from typing import Any
 
 import urwid
 from perf_streams.event_stream import Event
@@ -25,6 +28,7 @@ from catscan.data import (
     get_event_data,
     save_event_data,
 )
+from catscan.events import EventSpecification, trace_events
 from catscan.events.mapping import Mapper
 from catscan.search import (
     EventStreamDataSearch,
@@ -47,7 +51,7 @@ from catscan.util import glob_to_pattern, hex_args_to_re
 from catscan.widgets.ampere_logo import AmpereLogo
 from catscan.widgets.event_row import RowType
 from catscan.widgets.event_sidebar import EventDetail
-from catscan.widgets.event_view import EventView, PrimarySplitEventView, RowViews
+from catscan.widgets.event_view import EventView, PrimarySplitEventView, RowViews, View
 from catscan.widgets.popups import Help, Messages
 from catscan.widgets.resource_view import ResourceView, SubsetResourceView
 from catscan.widgets.separators import MiddleBorder
@@ -83,7 +87,7 @@ class Top(urwid.widget.Widget):
     _min_cycles_per_char = Fraction(1, 32)
     MAX_SIMULTANEOUS_TXID_HIGHLIGHTS = 32
 
-    def __init__(self, args):
+    def __init__(self, args: Namespace):
         self._infer_period = args.period is None
         self.state = CatscanState(
             has_focus=True,
@@ -199,7 +203,9 @@ class Top(urwid.widget.Widget):
         # the loop itself
         self.main_loop: urwid.MainLoop = None
 
-    def _create_view(self, cls, name, initial_esd, *args, **kwargs) -> EventView:
+    def _create_view(
+        self, cls: type[View], name: str, initial_esd: EventStreamData, *args: Any, **kwargs: Any
+    ) -> EventView:
         return cls(
             name,
             self.state,
@@ -216,27 +222,27 @@ class Top(urwid.widget.Widget):
             **kwargs,
         )
 
-    def _update_view_rows(self, invalidate=True):
+    def _update_view_rows(self, invalidate: bool = True):
         self.view_rows.update_rows()
         if invalidate:
             self._invalidate()
 
     @property
-    def _resource_view(self):
+    def _resource_view(self) -> ResourceView:
         return self.view_rows[f"{DefaultViews.MAIN}.{DefaultViews.RESOURCE}"]
 
     @property
-    def _pinned_resource_view(self):
+    def _pinned_resource_view(self) -> SubsetResourceView:
         return self.view_rows[f"{DefaultViews.MAIN}.{DefaultViews.PINNED}"]
 
     @property
-    def _focused_view(self):
+    def _focused_view(self) -> EventView:
         focused = self.view_rows.focused_views()
         if focused:
             return self.view_rows[focused[0]]
         return self._resource_view
 
-    def _get_data_view_from_views(self, views: list[str] | None = None):
+    def _get_data_view_from_views(self, views: list[str] | None = None) -> EventView:
         # NOTE: currently only returns a single data-view as multiple are not
         # supported yet and not clear how they will be handled (if at all)
         views = views or self.view_rows.focused_views()
@@ -246,7 +252,7 @@ class Top(urwid.widget.Widget):
         return data_views[0]
 
     @property
-    def _focused_data_view(self):
+    def _focused_data_view(self) -> EventView:
         return self._get_data_view_from_views()
 
     @property
@@ -257,7 +263,7 @@ class Top(urwid.widget.Widget):
     def usable_width(self) -> int:
         """
         The number of columns devoted to the right-hand sidebar portion of the
-        screen
+        screen.
         """
         usable = self.cached_maxcol - self.state.column_header_width - 1
         if not self.state.selection:
@@ -268,43 +274,41 @@ class Top(urwid.widget.Widget):
         selected_event = self.state.selection.is_event()
         if self.marking:
             return ("🖍  provide a character to mark selected event...", self.stream_data.source)
-        elif self.going_to_mark:
+        if self.going_to_mark:
             return ("👓  provide a character to go to marked event...", self.stream_data.source)
-        elif self.state.searcher is not None:
+        if self.state.searcher is not None:
             if selected_event and self.state.selection.event == self.search_tracker.search_cursor:
                 return (
                     f"🔍 {self.search_tracker.cursor_idx + 1} of {self.search_tracker.total_matches} results in {self.state.searcher}",
                     self.stream_data.source,
                 )
-            else:
-                return (
-                    f"🔍 {self.search_tracker.total_matches} results for {self.state.searcher}",
-                    self.stream_data.source,
-                )
-        else:
-            sync_status = ""
-            if self.commit_syncer and not self.commit_syncer.stopped:
-                symbol = "⇄" if self.commit_syncer.syncing else "⏸"
-                sync_status = f" | {symbol} {self.commit_syncer.fifo_basename}"
-            icon = "🐈" if self.state.has_focus else "⏾ "
             return (
-                f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
+                f"🔍 {self.search_tracker.total_matches} results for {self.state.searcher}",
                 self.stream_data.source,
             )
+        sync_status = ""
+        if self.commit_syncer and not self.commit_syncer.stopped:
+            symbol = "⇄" if self.commit_syncer.syncing else "⏸"
+            sync_status = f" | {symbol} {self.commit_syncer.fifo_basename}"
+        icon = "🐈" if self.state.has_focus else "⏾ "
+        return (
+            f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
+            self.stream_data.source,
+        )
 
     def load_file(
         self,
-        filename,
-        view,
-        mapper,
-        event_filters,
-        events,
-        cache_to,
-        post_to_tx,
-        pull_from_tx,
-        occupancy,
-        convert_enumerations=True,
-        **view_options,
+        filename: str,
+        view: str,
+        mapper: Mapper,
+        event_filters: trace_events.EventFilters,
+        events: list[EventSpecification],
+        cache_to: str | None,
+        post_to_tx: list[str] | None,
+        pull_from_tx: list[str] | None,
+        occupancy: list[str] | None,
+        convert_enumerations: bool = True,
+        **view_options: Any,
     ):
         if self.loading_thread is not None:
             # Attempt to cleanup a previous background thread if it still exits
@@ -315,18 +319,18 @@ class Top(urwid.widget.Widget):
         self.update_state(self.state.copy_with(loading=True))
         self.loading_pct = 0
 
-        def event_stream_pct_loaded(updater):
-            def callback(percentage):
+        def event_stream_pct_loaded(updater: int) -> Callable:
+            def callback(percentage: float):
                 self.loading_screen.update_pct_loaded(percentage)
                 self.loading_pct = percentage
-                os.write(updater, "u".encode())
+                os.write(updater, b"u")
 
             return callback
 
         def update(_data):
             self._invalidate()
 
-        def event_stream_loaded(future):
+        def event_stream_loaded(future: Future):
             self.update_state(self.state.copy_with(loading=False))
             self.update_stream_data(future.result())
             self.eval_commands(self.post_load_commands)
@@ -335,27 +339,27 @@ class Top(urwid.widget.Widget):
             # of urwid's normal event loop
             self.main_loop.draw_screen()
 
-        def event_stream_loading_error(message):
+        def event_stream_loading_error(message: str):
             self.add_message(message)
             # Force redrawing the screen since we're updating the state outside
             # of urwid's normal event loop
             self.main_loop.draw_screen()
 
         def load_data(
-            filename,
-            view,
-            mapper,
-            event_filters,
-            events,
-            cache_to,
-            post_to_tx,
-            pull_from_tx,
-            occupancy,
-            update_pct_callback,
-            error_callback,
-            convert_enumerations=True,
-            **view_options,
-        ):
+            filename: str,
+            view: str,
+            mapper: Mapper,
+            event_filters: trace_events.EventFilters,
+            events: list[EventSpecification],
+            cache_to: str | None,
+            post_to_tx: list[str],
+            pull_from_tx: list[str],
+            occupancy: list[str],
+            update_pct_callback: Callable,
+            error_callback: Callable,
+            convert_enumerations: bool = True,
+            **view_options: Any,
+        ) -> EventStreamData:
             esd = get_event_data(
                 filename,
                 view,
@@ -387,7 +391,7 @@ class Top(urwid.widget.Widget):
 
             return esd
 
-        def load_now(loop, _arg):
+        def load_now(_loop, _arg):
             updater = self.main_loop.watch_pipe(update)
             self.loading_thread = self.main_loop.event_loop.run_in_executor(
                 None,
@@ -447,7 +451,9 @@ class Top(urwid.widget.Widget):
             canvas = self.messages.overlay(canvas, size, focus)
         return canvas
 
-    def update_stream_data(self, stream_data: EventStreamData, external_column_width=0, zoom_to_extents=True) -> None:
+    def update_stream_data(
+        self, stream_data: EventStreamData, external_column_width: int = 0, zoom_to_extents: bool = True
+    ) -> None:
         self.stream_data = stream_data
 
         if self.commit_sync_event in self.stream_data.event_rows:
@@ -479,7 +485,7 @@ class Top(urwid.widget.Widget):
         self._invalidate()
         self.columns.contents = [(self.view_frame, (urwid.WHSettings.WEIGHT, 1, False))]
 
-    def update_state(self, new_state: CatscanState, external_sync=False) -> bool:
+    def update_state(self, new_state: CatscanState, external_sync: bool = False) -> bool:
         """
         Update the application state using a newly-supplied state, fix up any
         irregularities in alignment of the display, and flow the new state out
@@ -538,7 +544,7 @@ class Top(urwid.widget.Widget):
         """
         data_view = self._focused_data_view
 
-        def group_index(name):
+        def group_index(name: str) -> int:
             return min([data_view.keys().index(row.name) for row in data_view if row.group == name])
 
         event_row_indices = [data_view.keys().index(row) + 1 for row in self.view_rows.focused_event_rows()]
@@ -547,8 +553,7 @@ class Top(urwid.widget.Widget):
 
         if combined_indices:
             return min(combined_indices)
-        else:
-            return 0
+        return 0
 
     def show_help(self, command: str | None = None) -> bool:
         if command:
@@ -563,7 +568,7 @@ class Top(urwid.widget.Widget):
         new_state = self.state.copy_with(show_help=False)
         return self.update_state(new_state)
 
-    def add_message(self, message) -> bool:
+    def add_message(self, message: str) -> bool:
         new_state = self.state.copy_with(messages=self.state.messages + [message])
         return self.update_state(new_state)
 
@@ -571,7 +576,7 @@ class Top(urwid.widget.Widget):
         new_state = self.state.copy_with(messages=[])
         return self.update_state(new_state)
 
-    def toggle_expanded(self, event_name) -> bool:
+    def toggle_expanded(self, event_name: str) -> bool:
         # TODO only toggle the expansion of the selected event row
         new_state = self.state.copy_with(expand_rows=not self.state.expand_rows)
         return self.update_state(new_state)
@@ -593,23 +598,23 @@ class Top(urwid.widget.Widget):
         """
         Zoom the UI out so the same graphical area covers 1/2 as much time as
         before, centered around column `column`, returning True if the zoom
-        level changed, or False if it was unable to
+        level changed, or False if it was unable to.
         """
         return self._zoom_around(
             new_cycles_per_char=max(Top._min_cycles_per_char, self.state.cycles_per_char / 2), column=column
         )
 
-    def zoom_out(self, column) -> bool:
+    def zoom_out(self, column: int) -> bool:
         """
         Zoom the UI out so the same graphical area covers 2x as much time,
         centered around column `column`, returning True if the zoom changed, or
-        False if it was unable to
+        False if it was unable to.
         """
         return self._zoom_around(
             new_cycles_per_char=min(Top._max_cycles_per_char, self.state.cycles_per_char * 2), column=column
         )
 
-    def _translate(self, ps, limit=None) -> bool:
+    def _translate(self, ps: int, limit: int | None = None) -> bool:
         limit = limit or abs(ps)
         viewable_ps = round(
             self.state.ps_per_cycle * self.state.cycles_per_char * (self.cached_maxcol - self.state.column_header_width)
@@ -628,7 +633,7 @@ class Top(urwid.widget.Widget):
         return self.update_state(new_state)
 
     @property
-    def _quarter_screen(self):
+    def _quarter_screen(self) -> int:
         return int(self.state.cycles_per_char * self.state.ps_per_cycle * self.cached_maxcol / 4)
 
     def scroll_left(self) -> bool:
@@ -693,7 +698,7 @@ class Top(urwid.widget.Widget):
         new_state = self.state.copy_with(selection=Selection())
         return self.update_state(new_state)
 
-    def translate_event(self, x_chars) -> bool:
+    def translate_event(self, x_chars: int) -> bool:
         if x_chars == 0:
             return True
 
@@ -703,7 +708,7 @@ class Top(urwid.widget.Widget):
         )
 
     def highlight_transactions(self, txids: Iterable[int]) -> bool:
-        color_use = {c: 0 for c in range(NUM_EVENT_COLORS)}
+        color_use = dict.fromkeys(range(NUM_EVENT_COLORS), 0)
         for color in self.state.highlighted_transactions.values():
             color_use[color] += 1
         least_used_color = min(color_use, key=color_use.get)
@@ -765,10 +770,7 @@ class Top(urwid.widget.Widget):
         return True
 
     def go_to_time(self, time: int, max_zoom: Fraction | None = None) -> bool:
-        if max_zoom:
-            new_zoom = min(self.state.cycles_per_char, max_zoom)
-        else:
-            new_zoom = self.state.cycles_per_char
+        new_zoom = min(self.state.cycles_per_char, max_zoom) if max_zoom else self.state.cycles_per_char
         left_padding_ps = round(((self.usable_width * new_zoom - 1) * self.state.ps_per_cycle) / 2)
 
         new_state = self.state.copy_with(start_ps=time - left_padding_ps, cycles_per_char=new_zoom)
@@ -807,7 +809,7 @@ class Top(urwid.widget.Widget):
         match_type: MatchType = MatchType.AUTO,
         min_per_cycle: int | None = None,
         views: list[str] | None = None,
-    ):
+    ) -> bool:
         search_term = search_string.strip()
         search_rows = []
         case_sensitive_specified = case_sensitive is not None
@@ -945,7 +947,13 @@ class Top(urwid.widget.Widget):
             return self.make_selection(prev_search_result, views=self.search_tracker.views)
         return False
 
-    def summarize(self, start_time=None, end_time=None, rows=None, fields=None):
+    def summarize(
+        self,
+        start_time: int | None = None,
+        end_time: int | None = None,
+        rows: Sequence[str | int] | None = None,
+        fields: Sequence[str] | None = None,
+    ):
         data_view = self._focused_data_view
         if not rows:
             rows = data_view.keys()
@@ -1147,7 +1155,7 @@ class Top(urwid.widget.Widget):
             else:
                 self.show_help()
             return False
-        elif self.state.loading:
+        if self.state.loading:
             self.add_message(f"'{command}' cannot be executed while loading")
             return False
 
@@ -1166,7 +1174,7 @@ class Top(urwid.widget.Widget):
             else:
                 self.show_help()
             return False
-        elif command == Commands.SEARCH:
+        if command == Commands.SEARCH:
             if not args:
                 self.search(None)
             else:
@@ -1266,10 +1274,10 @@ class Top(urwid.widget.Widget):
                     f"'{command}' requires you to pass a path to use as the base name for the FIFOs used to synchronize with the other catscan process"
                 )
                 return False
-            elif self.commit_sync_event is None or self.commit_sync_data_name is None:
+            if self.commit_sync_event is None or self.commit_sync_data_name is None:
                 self.add_message("No sync event and/or data-name specified")
                 return False
-            elif "stop" in args:
+            if "stop" in args:
                 self.commit_syncer.stop()
                 self.commit_syncer = None
             else:
@@ -1555,10 +1563,7 @@ class Top(urwid.widget.Widget):
 
         ret = key
         for num_recent_keys in range(len(recent_keys) + 1):
-            if num_recent_keys:
-                keys = "-".join(recent_keys[-num_recent_keys:] + [key])
-            else:
-                keys = key
+            keys = "-".join(recent_keys[-num_recent_keys:] + [key]) if num_recent_keys else key
             if not self.handle_keypress(size, keys):
                 ret = None
                 break

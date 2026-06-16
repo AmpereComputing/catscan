@@ -59,7 +59,7 @@ class TextTable(urwid.widget.Widget):
         self._invalidate()
 
     def _get_column_widths(self, overall_width: int) -> list[int]:
-        """Given the overall width, calculate the width allowed for column"""
+        """Given the overall width, calculate the width allowed for column."""
 
         max_col_widths = [
             max([len(self.contents[i][j]) for i in range(self.num_rows)]) for j in range(self.num_columns)
@@ -111,17 +111,16 @@ class TextTable(urwid.widget.Widget):
     def _align_to_char(align: urwid.Align) -> str:
         if align == urwid.CENTER:
             return "^"
-        elif align == urwid.RIGHT:
+        if align == urwid.RIGHT:
             return ">"
-        else:
-            assert align == urwid.LEFT
-            return "<"
+        assert align == urwid.LEFT
+        return "<"
 
     def _render_cell(self, text: str, width: int, align: urwid.Align = urwid.LEFT) -> list[str]:
         """
         Render a single cell of text into a list of string rows within that
         cell (taking however many rows are required to display the entire
-        text)
+        text).
         """
         use_indentation = width > len(self.INDENTATION) * 2
         indentation_width = len(self.INDENTATION) if use_indentation else 0
@@ -168,11 +167,11 @@ class TextTable(urwid.widget.Widget):
         """
         assert len(columns) == len(widths)
         rendered_cells = [self._render_cell(col, width) for col, width in zip(columns, widths)]
-        max_rows = max([len(cell) for cell in rendered_cells])
+        max_rows = max(len(cell) for cell in rendered_cells)
 
-        for cell, width in zip(rendered_cells, widths):
+        for idx, (cell, width) in enumerate(zip(rendered_cells, widths)):
             if len(cell) < max_rows:
-                cell += [" " * width] * (max_rows - len(cell))
+                rendered_cells[idx] = cell + [" " * width] * (max_rows - len(cell))
 
         return [self.COL_DIVIDER.join(r) for r in zip(*rendered_cells)]
 
@@ -203,14 +202,14 @@ class TextTable(urwid.widget.Widget):
 
     def _render_divider(self, widths: list[int]) -> list[str]:
         """
-        Render a horizontal divider between rows in the table
+        Render a horizontal divider between rows in the table.
         """
         return [self.ROW_COL_DIVIDER.join([self.ROW_DIVIDER * width for width in widths])]
 
     def _render_table(self, width: int) -> tuple[list[bytes], list[list[tuple[str, int]]]]:
         """
         Render the table to a list of strings - one string per textual row of
-        the table (each cell in the table may take up more than one row of text)
+        the table (each cell in the table may take up more than one row of text).
         """
         col_widths = self._get_column_widths(width)
         rows = []

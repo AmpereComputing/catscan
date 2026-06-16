@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 """
-Classes to interact with events in Catscan
+Classes to interact with events in Catscan.
 """
 
 import re
-from abc import ABC
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator
 from itertools import chain
-from typing import Callable
 
 from perf_streams.event_stream import Event
 
@@ -17,21 +17,21 @@ from catscan.events import EventSpecification
 DEFAULT_PERIOD = 300
 
 
-def trace_spec(arg: str):
+def trace_spec(arg: str) -> EventSpecification:
     return EventSpecification(arg)
 
 
-def split_spec(arg: str):
+def split_spec(arg: str) -> tuple[EventSpecification, Callable]:
     if "=" not in arg:
         raise ValueError("Invalid split, expected '='")
 
     event_spec, fmt = arg.split("=")
     event = EventSpecification(event_spec)
     names = tuple(zip(event.factors, event.long_factors))
-    lowercase = set(m for m in re.findall(r"\{([\w_\.]+):s?ls?\}", fmt))
+    lowercase = set(re.findall(r"\{([\w_\.]+):s?ls?\}", fmt))
     fmt = re.sub(r"\{([\w_\.]+):(.*?)s?ls?(.*?)\}", r"{\1:\2\3}", fmt)
 
-    def rename_event_from_data(ev):
+    def rename_event_from_data(ev: Event):
         values = {
             short_name: ev.data[long_name].lower()
             if short_name in lowercase and isinstance(ev.data[long_name], str)
@@ -50,11 +50,12 @@ class EventFilter(ABC):
     OptionalCacheNames = CacheNames | None
 
     def events(self) -> list[EventSpecification]:
+        """Event specifications covered by filter."""
         return []
 
+    @abstractmethod
     def __call__(self, event: Event) -> tuple[bool | None, OptionalCacheNames]:
         """Process/filter event, included/excluded if bool returned."""
-        return None, None
 
 
 class EventFilters:
@@ -95,10 +96,10 @@ class EventFilters:
 
         return included, cache_data_names
 
-    def _hash_event(self, event: Event, names: EventFilter.CacheNames):
+    def _hash_event(self, event: Event, names: EventFilter.CacheNames) -> int:
         return hash(tuple(event.data[name] for name in names))
 
-    def _apply_to(self, event: Event, included: bool | None, name_change: str | None = None):
+    def _apply_to(self, event: Event, included: bool | None, name_change: str | None = None) -> bool:
         if name_change:
             event.name = name_change
         return self._default_inclusion if included is None else included
@@ -206,7 +207,7 @@ class EventSplitter(EventFilter):
 
 
 class Occupancy:
-    def __init__(self, definition):
+    def __init__(self, definition: str):
         self.name, events = definition.split(":")
         parts = events.split(",")
         self.acquire, self.release = parts[0:2]
@@ -215,7 +216,7 @@ class Occupancy:
 
 
 class OccupancyTracker:
-    def __init__(self, occupancy_list) -> None:
+    def __init__(self, occupancy_list: list[str]) -> None:
         self.acquire = {}
         self.release = {}
         self.rows = []
@@ -226,10 +227,10 @@ class OccupancyTracker:
             self.rows.append(occupancy.name)
 
     @property
-    def events(self):
+    def events(self) -> Iterator[Event]:
         return chain.from_iterable([o.acquire, o.release] for o in self.acquire.values())
 
-    def acquired(self, event):
+    def acquired(self, event: Event) -> int | None:
         if occupancy := self.acquire.get(event.name):
             if count := ResourceView.value_with_suffix(event, occupancy.data):
                 occupancy.count = count
@@ -238,7 +239,7 @@ class OccupancyTracker:
             return occupancy
         return None
 
-    def released(self, event):
+    def released(self, event: Event) -> int | None:
         if occupancy := self.release.get(event.name):
             if count := ResourceView.value_with_suffix(event, occupancy.data):
                 occupancy.count = count
@@ -250,13 +251,15 @@ class OccupancyTracker:
 
 class ResourceView:
     @staticmethod
-    def value_with_suffix(event, suffix):
+    def value_with_suffix(event: Event, suffix: str) -> str | None:
         for name, value in event.data.items():
             if name.endswith(suffix):
                 return value
 
+        return None
+
     @staticmethod
-    def setup_tx_data(mapping):
+    def setup_tx_data(mapping: list[str]) -> dict[str, dict[str, str]]:
         tx_data = {}
         item_re = re.compile(r"([^:]+):([^=]+)(=(\S+))?")
         for item in mapping:

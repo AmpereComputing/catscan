@@ -1,7 +1,7 @@
 # Copyright (c) 2024-2025 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from typing import Literal
+from typing import Any, Literal
 
 import urwid
 import urwid.canvas
@@ -12,12 +12,12 @@ class FixedWidthScrollBar(urwid.ScrollBar):
 
     def __init__(
         self,
-        widget,
-        *args,
-        trough_char=" ",
+        widget: urwid.Widget,
+        *args: Any,
+        trough_char: str = " ",
         side: Literal["left", "right"] = "right",
-        width=1,
-        **kwargs,
+        width: int = 1,
+        **kwargs: Any,
     ):
         self._border_char = trough_char
         self._border_width = width
@@ -25,7 +25,7 @@ class FixedWidthScrollBar(urwid.ScrollBar):
 
         super().__init__(widget, *args, trough_char=trough_char, side=side, width=width, **kwargs)
 
-    def render(self, size, focus=False):
+    def render(self, size: tuple[int, int], focus: bool = False) -> urwid.canvas.Canvas:
         maxcol, maxrow = size
         rows_max = self.scrolling_base_widget.rows_max(size, focus)
         if rows_max > maxrow:

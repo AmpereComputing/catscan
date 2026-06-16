@@ -4,7 +4,7 @@
 from collections.abc import Hashable, Iterable, Mapping
 from fractions import Fraction
 from inspect import get_annotations
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 from catscan.data import Event, EventData, Transaction
 from catscan.search import Searcher
@@ -19,7 +19,7 @@ class HashableFrozenDict(Mapping, Hashable):
     caching functions.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any):
         self._dict = dict(*args, **kwargs)
         for k, v in self._dict.items():
             if not isinstance(k, Hashable):
@@ -28,7 +28,7 @@ class HashableFrozenDict(Mapping, Hashable):
                 raise TypeError(f"unhashable type: '{type(v)}'")
         self._cached_hash = hash(tuple(sorted(self._dict.items())))
 
-    def copy_with(self, key, value):
+    def copy_with(self, key: Hashable, value: Hashable) -> "HashableFrozenDict":
         if not isinstance(key, Hashable):
             raise TypeError(f"unhashable type: '{type(key)}'")
         if not isinstance(value, Hashable):
@@ -37,26 +37,26 @@ class HashableFrozenDict(Mapping, Hashable):
         new_dict[key] = value
         return HashableFrozenDict(new_dict)
 
-    def copy_without(self, key):
+    def copy_without(self, key: Hashable) -> "HashableFrozenDict":
         if key not in self._dict:
             return self
         new_dict = self._dict.copy()
         del new_dict[key]
         return HashableFrozenDict(new_dict)
 
-    def __getitem__(self, key):
+    def __getitem__(self, key: Any) -> Any:
         return self._dict.__getitem__(key)
 
-    def __iter__(self):
+    def __iter__(self):  # noqa: ANN204
         return self._dict.__iter__()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self._dict)
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return self._cached_hash
 
-    def __eq__(self, other):
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, HashableFrozenDict):
             return False
         return tuple(sorted(self._dict.items())) == tuple(sorted(other._dict.items()))
@@ -123,37 +123,35 @@ class Selection:
     @property
     def start_ps(self) -> int:
         """
-        The starting time of the selection (inclusive), in picoseconds
+        The starting time of the selection (inclusive), in picoseconds.
         """
         assert self.is_event() or self.is_time_range()
         if self.is_event():
             return self.event.time
-        else:
-            assert self.is_time_range()
-            return self._time_range[0]
+        assert self.is_time_range()
+        return self._time_range[0]
 
     @property
     def end_ps(self) -> int:
         """
-        The ending time of the selection (exclusive), in picoseconds
+        The ending time of the selection (exclusive), in picoseconds.
         """
         assert self.is_event() or self.is_time_range()
         if self.is_event():
             return self.event.time + self._event_duration
-        else:
-            assert self.is_time_range()
-            return self._time_range[1]
+        assert self.is_time_range()
+        return self._time_range[1]
 
-    def __bool__(self):
+    def __bool__(self) -> bool:
         return self.event_row is not None
 
     def extend(self, other: "Selection") -> "Selection":
         """
-        Combine two selections into one
+        Combine two selections into one.
         """
         if self == other or not other:
             return self
-        elif not self:
+        if not self:
             return other
 
         # At this point, we know we need to combine the two selections to form
@@ -182,13 +180,12 @@ class Selection:
             view=self.view,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if not self:
             return "<no selection>"
-        elif self.is_event():
+        if self.is_event():
             return f"<selected event {self.event}>"
-        else:
-            return f"<selected row {self.event_row} from {self.start_ps}ps to {self.end_ps}ps>"
+        return f"<selected row {self.event_row} from {self.start_ps}ps to {self.end_ps}ps>"
 
 
 class CatscanState(NamedTuple):
@@ -220,7 +217,7 @@ class CatscanState(NamedTuple):
     def ps_per_char(self) -> Fraction:
         return self.ps_per_cycle * self.cycles_per_char
 
-    def copy_with(self, **kwargs):
+    def copy_with(self, **kwargs: Any) -> "CatscanState":
         """
         Return a copy of the state object, with the members in kwargs updated
         with their respective values. Check the types being assigned match the

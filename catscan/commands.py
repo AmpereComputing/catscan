@@ -5,10 +5,11 @@ import re
 import shlex
 import sys
 from collections import defaultdict
+from collections.abc import Callable
 from enum import StrEnum
 from fractions import Fraction
 from functools import cached_property
-from typing import Any, Callable
+from typing import Any
 
 from catscan.completion import FilteredSuggestions
 from catscan.search import MatchType
@@ -80,46 +81,46 @@ class Arg:
         self._mutually_exclusive = mutually_exclusive
 
     @classmethod
-    def Optional(cls, *args, **kwargs):
+    def Optional(cls, *args: Any, **kwargs: Any) -> "Arg":  # noqa: N802
         return cls(*args, nargs=0, **kwargs)
 
     @classmethod
-    def Required(cls, *args, **kwargs):
+    def Required(cls, *args: Any, **kwargs: Any) -> "Arg":  # noqa: N802
         return cls(*args, required=True, **kwargs)
 
     @property
-    def valueless(self):
+    def valueless(self) -> bool:
         return self.nargs == 0
 
     @property
-    def required(self):
+    def required(self) -> bool:
         return self._requires == 0
 
     @property
-    def optional(self):
+    def optional(self) -> bool:
         return self._requires is None
 
     @property
-    def required_at(self):
+    def required_at(self) -> int | None:
         return self._requires if self._requires is not None and self._requires > 0 else None
 
     @property
-    def default(self):
+    def default(self) -> Any:
         return self._default
 
-    def has_default(self):
+    def has_default(self) -> bool:
         return self._default is not None
 
     @property
-    def mutually_exclusive(self):
+    def mutually_exclusive(self) -> bool:
         return self._mutually_exclusive is not None
 
     @property
-    def mutually_exclusive_group(self):
+    def mutually_exclusive_group(self) -> str | None:
         return self._mutually_exclusive
 
     @property
-    def choices(self):
+    def choices(self) -> list[Any]:
         choices = []
         for arg_type in self._types:
             if self._choices is not None:
@@ -130,7 +131,7 @@ class Arg:
                 choices.extend([value.lower() for value in arg_type])
         return choices
 
-    def _parse_value(self, value: str):
+    def _parse_value(self, value: str) -> Any:
         last_exception = None
         for arg_type in self._types:
             try:
@@ -141,7 +142,7 @@ class Arg:
                     if v in ("0", "n", "f"):
                         return False
                     raise ValueError("Invalid boolean value")
-                elif arg_type is int:
+                if arg_type is int:
                     return int(value, base=0)
 
                 return arg_type(value)
@@ -153,7 +154,7 @@ class Arg:
             raise last_exception
         raise ValueError("Unknown argument value")
 
-    def parse(self, value: list | str):
+    def parse(self, value: list | str) -> Any:
         if self.valueless:
             return True
 
@@ -163,10 +164,10 @@ class Arg:
         parsed = self._parse_value(value)
         return [parsed] if self._multiple else parsed
 
-    def requirement_met(self, present: bool, nargs: int):
+    def requirement_met(self, present: bool, nargs: int) -> bool:
         return present or self.optional or self._requires > nargs
 
-    def signature(self, positional: bool = True):
+    def signature(self, positional: bool = True) -> str:
         if positional:
             name = self.name.replace("_", " ")
             if self.nargs > 3:
@@ -228,10 +229,10 @@ class CommandDefinition:
         if isinstance(self.specification, re.Pattern):
             if m := self.specification.match(arg):
                 return (True, m.groups())
-            return (False, tuple())
+            return (False, ())
         if isinstance(self.specification, tuple):
-            return (arg in self.specification, tuple())
-        return (self.specification == arg, tuple())
+            return (arg in self.specification, ())
+        return (self.specification == arg, ())
 
     def parse_arguments(self, args: list[str], kwargs: dict[str, Any]) -> tuple[list[Any], dict[str, Any]]:
         """Parse positional and keyword arguments."""
@@ -276,22 +277,21 @@ class CommandDefinition:
             raise ValueError(f"Unknown keyword argument: {e}") from e
 
         for name in arguments:
-            if arg := self._kwargs_aliases.get(name):
-                if arg.mutually_exclusive:
-                    mutually_exclusive_groups[arg.mutually_exclusive_group].add(name)
+            if (arg := self._kwargs_aliases.get(name)) and arg.mutually_exclusive:
+                mutually_exclusive_groups[arg.mutually_exclusive_group].add(name)
 
-        for args in mutually_exclusive_groups.values():
-            if len(args) > 1:
-                raise ValueError(f"Only one of the arguments can be provided: {', '.join(args)}")
+        for group_args in mutually_exclusive_groups.values():
+            if len(group_args) > 1:
+                raise ValueError(f"Only one of the arguments can be provided: {', '.join(group_args)}")
 
         return positional_args, arguments
 
     @property
-    def kwargs(self):
+    def kwargs(self) -> Any:
         return self._kwargs.items()
 
     @property
-    def kwargs_aliases(self):
+    def kwargs_aliases(self) -> Any:
         return self._kwargs_aliases.items()
 
     def get_argument(self, name: str) -> Arg | None:
@@ -349,7 +349,7 @@ class CommandDefinition:
             raise ValueError(f"Expected at most {max_args} arguments, {nargs} provided")
 
     @cached_property
-    def signature(self):
+    def signature(self) -> str:
         signature = defaultdict(list)
         last_group = None
         current_requirement = None
@@ -375,19 +375,17 @@ class CommandDefinition:
 
         if self.display_name:
             return f"{self.name} {signature}".strip()
-        else:
-            return f"{signature}".strip()
+        return f"{signature}".strip()
 
     @property
-    def has_example(self):
+    def has_example(self) -> bool:
         return bool(self._example)
 
     @property
-    def example(self):
+    def example(self) -> str:
         if self.display_name:
             return f":{self.name} {self._example}".strip()
-        else:
-            return f":{self._example}".strip()
+        return f":{self._example}".strip()
 
 
 def parse_command_args(command: str) -> tuple[str | None, list[Any], dict[str, Any]]:
@@ -420,7 +418,7 @@ def parse_command_args(command: str) -> tuple[str | None, list[Any], dict[str, A
 class Mask(int):
     """Integer wrapper for mask arguments allowing for inverting mask."""
 
-    def __new__(cls, value: int | str):
+    def __new__(cls, value: int | str) -> Any:
         if isinstance(value, str):
             if value[0] == "~":
                 value = ~int(value[1:], base=0)
@@ -554,7 +552,7 @@ command_definitions = {command.name: command for command in all_commands}
 class CommandCompletion(FilteredSuggestions):
     """Command and argument completion."""
 
-    def __init__(self, commands: dict[str, CommandDefinition] | CommandDefinition, **kwargs):
+    def __init__(self, commands: dict[str, CommandDefinition] | CommandDefinition, **kwargs: Any):
         self._original_prefix = None
         self._cmd_only = not isinstance(commands, dict)
         self._cmd = None
@@ -614,7 +612,7 @@ class CommandCompletion(FilteredSuggestions):
             else [key for key, _arg in self._cmd.kwargs_aliases]
         )
 
-    def reset(self, current_text: str | None = None):
+    def reset(self, current_text: str | None = None) -> str:
         if current_text and current_text.endswith("=") and self._cmd is not None:
             arg_name = current_text.split(" ")[-1][:-1]
             if (arg := self._cmd.get_argument(arg_name)) and arg.valueless:

@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import textwrap
-from collections.abc import Iterable
-from typing import Callable
+from collections.abc import Callable, Iterable
+from typing import Any
 
 import urwid
 
@@ -28,7 +28,7 @@ class EventDetailTransaction(urwid.WidgetWrap):
     ) -> None:
         self.state = state
         if isinstance(txids, int):
-            self.txids = set([txids])
+            self.txids = {txids}
         else:
             self.txids = set(txids)
         self.relationship = relationship
@@ -83,13 +83,13 @@ class EventDetailTransaction(urwid.WidgetWrap):
             (goto_button, (urwid.WHSettings.WEIGHT, 1, False)),
         ]
 
-    def highlight_transactions(self, widget, user_args=None):
+    def highlight_transactions(self, _widget, _user_args=None) -> bool:
         return self.on_highlight_transactions(self.txids)
 
-    def unhighlight_transactions(self, widget, user_args=None):
+    def unhighlight_transactions(self, _widget, _user_args=None) -> bool:
         return self.on_unhighlight_transactions(self.txids)
 
-    def go_to_transactions(self, widget, user_args=None):
+    def go_to_transactions(self, _widget, _user_args=None) -> bool:
         return self.on_go_to_transactions(self.txids)
 
 
@@ -120,7 +120,7 @@ class EventDetailDataText(urwid.widget.Widget):
 
         if len(self.key) <= self.split and maxcol - 2 - self.split >= len(self.value):
             return 1
-        elif len(self.key) + 1 <= maxcol and len(self.value) <= maxcol:
+        if len(self.key) + 1 <= maxcol and len(self.value) <= maxcol:
             return 2
         return len(self.line_wrapper.wrap(self.key + ":")) + len(self.line_wrapper.wrap(self.value))
 
@@ -136,10 +136,10 @@ class EventDetailDataText(urwid.widget.Widget):
         if focus:
             attr = "focused_event_row"
 
-        def pad_right(string):
+        def pad_right(string: str) -> str:
             return string + " " * (maxcol - len(string))
 
-        def pad_left(string):
+        def pad_left(string: str) -> str:
             return " " * (maxcol - len(string)) + string
 
         lines = []
@@ -180,7 +180,7 @@ class EventDetailData(urwid.WidgetWrap):
         split: int,
         on_search: Callable,
     ) -> None:
-        def _search_field(widget, user_args=None):
+        def _search_field(_widget, _user_args=None):
             on_search(value, search_fields=[name])
 
         self.key = key
@@ -192,11 +192,11 @@ class EventDetailData(urwid.WidgetWrap):
         super().__init__(urwid.AttrMap(self.columns, f"button_{even_odd(row_idx)}"))
 
     @property
-    def split(self):
+    def split(self) -> int:
         return self.text.split
 
     @split.setter
-    def split(self, value):
+    def split(self, value: int):
         self.text.split = value
 
 
@@ -241,38 +241,36 @@ class EventDetail(urwid.WidgetWrap):
 
         super().__init__(self.scrollable)
 
-    def map_hex_args(self, display_data):
-        def format_as_hex(item):
+    def map_hex_args(self, display_data: dict[str, Any]) -> dict[str, Any]:
+        def format_as_hex(item: Any) -> Any:
             name, value = item
             if self.hexargs_re.match(name):
                 if isinstance(value, str):
                     return name, hex(int(value, base=0))
-                else:
-                    return name, hex(value)
+                return name, hex(value)
 
             return item
 
         return dict(map(format_as_hex, display_data.items()))
 
-    def _event_data_dictionary(self):
+    def _event_data_dictionary(self) -> dict[str, tuple[str, str | None]]:
         """
         Return a dictionary of the selected event's data items, with truncated
         prefixes.
         """
         event = self.state.selection.event
 
-        def strip_prefix(to_strip, to_compare):
+        def strip_prefix(to_strip: str, to_compare: str) -> str:
             # Strip a common prefix from to_strip if it shares a prefix with
             # to_compare
-            def prefix(s):
+            def prefix(s: str) -> str:
                 return ".".join(s.split(".")[:-1])
 
             if prefix(to_strip) == prefix(to_compare):
                 # remove duplicate prefixes (i.e. those that the data items
                 # share with their parent event)
                 return to_strip.split(".")[-1]
-            else:
-                return to_strip
+            return to_strip
 
         # Modify (a copy of) the event data items as the user has requested
         display_data = self.map_hex_args(event.data)
@@ -288,12 +286,12 @@ class EventDetail(urwid.WidgetWrap):
         return dict(data)
 
     @property
-    def event_data(self):
+    def event_data(self) -> dict[str, tuple[str, str | None]]:
         if self._event_data is None:
             self._event_data = self._event_data_dictionary()
         return self._event_data
 
-    def _event_transaction_data_dictionary(self):
+    def _event_transaction_data_dictionary(self) -> dict[str, Any]:
         """
         Return a dictionary of the selected event's transaction data items.
         """
@@ -310,23 +308,23 @@ class EventDetail(urwid.WidgetWrap):
         return {}
 
     @property
-    def event_transaction_data(self):
+    def event_transaction_data(self) -> dict[str, Any]:
         if self._event_transaction_data is None:
             self._event_transaction_data = self._event_transaction_data_dictionary()
         return self._event_transaction_data
 
-    def get_header_width(self, maxcol: int, data: dict):
+    def get_header_width(self, maxcol: int, data: dict) -> int:
         maxcol -= 2  # allow for ": " separating header and value
         if maxcol <= 0:
             return 0
 
-        header_lengths = sorted([len(h) for h in data.keys()])
+        header_lengths = sorted([len(h) for h in data])
         value_lengths = sorted([len(str(v[0])) if isinstance(v, tuple) else len(str(v)) for v in data.values()])
 
         best_split = None
         best_split_num_unsplit = None
 
-        for split in range(0, maxcol + 1):
+        for split in range(maxcol + 1):
             current_unsplit = sum([1 if l <= split else 0 for l in header_lengths]) + sum(
                 [1 if l < maxcol - split else 0 for l in value_lengths]
             )
@@ -335,7 +333,7 @@ class EventDetail(urwid.WidgetWrap):
                 best_split_num_unsplit = current_unsplit
         return best_split
 
-    def recreate_rows(self):
+    def recreate_rows(self) -> list[urwid.Widget]:
         self.detail_data_widgets = []
 
         if not self.state.selection.is_event():
@@ -490,7 +488,7 @@ class EventDetail(urwid.WidgetWrap):
         self.list_walker += self._rows
         self._invalidate()
 
-    def clear_selection(self, widget):
+    def clear_selection(self, _widget) -> bool:
         return self.on_clear_selection()
 
     def needs_scrollbar(self, size: (int, int)) -> bool:
@@ -515,7 +513,7 @@ class EventDetail(urwid.WidgetWrap):
         size: tuple[()] | tuple[int] | tuple[int, int],
         focus: bool = False,
     ) -> urwid.canvas.Canvas:
-        (maxcol, maxrow) = size
+        (maxcol, _maxrow) = size
         # Update the header/value split
         split = self.get_header_width(maxcol, self.event_data)
         for w in self.detail_data_widgets:

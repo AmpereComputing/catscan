@@ -11,10 +11,10 @@ import warnings
 
 import urwid
 
-from catscan import events as events
+from catscan import events
 from catscan.argument_parser import ArgumentParser
 from catscan.colors import palette
-from catscan.events import trace_events as trace_events
+from catscan.events import trace_events
 from catscan.events.mapping import (
     Mapper,
     disassembly_architectures,
@@ -46,7 +46,7 @@ def static_abbreviation_spec(arg: str) -> tuple[str, str]:
     return event, abbrev
 
 
-def parse_args():
+def parse_args() -> argparse.Namespace:
     parser = ArgumentParser(description=__doc__, tool="catscan", comments=True)
     parser.add_argument("input", nargs="?", default="events.es", help="event stream file")
     parser.add_argument("--log", default=None, help="Log to specified filename")
@@ -226,7 +226,7 @@ def parse_args():
     return args
 
 
-def setup(args, screen: urwid.BaseScreen | None = None) -> Top:
+def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> Top:
     top = Top(args)
     event_loop = asyncio.new_event_loop()
     event_loop.set_debug(args.debug)
@@ -241,9 +241,8 @@ def setup(args, screen: urwid.BaseScreen | None = None) -> Top:
 
     # Try to use 256 colors if we think the terminal supports it
     colors = 16
-    if "TERM" in os.environ:
-        if "256" in os.environ["TERM"]:
-            colors = 256
+    if "TERM" in os.environ and "256" in os.environ["TERM"]:
+        colors = 256
     loop.screen.set_terminal_properties(colors)
     loop.screen.reset_default_terminal_palette()
     loop.screen.focus_reporting = True
@@ -287,12 +286,12 @@ def setup(args, screen: urwid.BaseScreen | None = None) -> Top:
     return top
 
 
-def run(args):
+def run(args: argparse.Namespace) -> None:
     top = setup(args)
     top.main_loop.run()
 
 
-def main():
+def main() -> None:
     args = parse_args()
     run(args)
 

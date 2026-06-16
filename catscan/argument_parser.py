@@ -5,6 +5,8 @@ import argparse
 import os
 import shlex
 import sys
+from collections.abc import Iterable
+from typing import Any
 
 
 class ArgumentParser(argparse.ArgumentParser):
@@ -12,13 +14,13 @@ class ArgumentParser(argparse.ArgumentParser):
 
     def __init__(
         self,
-        tool=None,
-        comments=False,
-        arg_file_path=None,
-        fromfile_prefix_chars=None,
-        epilog="",
-        formatter_class=argparse.RawTextHelpFormatter,
-        **kwargs,
+        tool: str | None = None,
+        comments: bool = False,
+        arg_file_path: list[str] | None = None,
+        fromfile_prefix_chars: str | None = None,
+        epilog: str = "",
+        formatter_class: type[argparse.HelpFormatter] = argparse.RawTextHelpFormatter,
+        **kwargs: Any,
     ):
         self.enable_comments = comments
         self.fromfile_prefix_chars = fromfile_prefix_chars or "@"
@@ -46,7 +48,7 @@ Config file options:
             **kwargs,
         )
 
-    def _read_args_from_files(self, arg_strings, context=None):
+    def _read_args_from_files(self, arg_strings: Iterable[str], context: list[str] | None = None) -> list[str]:
         # expand arguments referencing files
         new_arg_strings = []
         for arg_string in arg_strings:
@@ -68,7 +70,7 @@ Config file options:
                 found = False
                 for path in search_paths:
                     try:
-                        with open(path, "r") as args_file:
+                        with open(path) as args_file:
                             for context_path in context:
                                 if os.path.realpath(path) == os.path.realpath(context_path):
                                     raise ValueError(
@@ -77,11 +79,7 @@ Config file options:
 
                             new_arg_strings.extend(
                                 self._read_args_from_files(
-                                    [
-                                        arg
-                                        for arg_line in args_file.readlines()
-                                        for arg in self.convert_arg_line_to_args(arg_line)
-                                    ],
+                                    [arg for arg_line in args_file for arg in self.convert_arg_line_to_args(arg_line)],
                                     context=context + [path],
                                 )
                             )
@@ -100,5 +98,5 @@ Config file options:
         # return the modified argument list
         return new_arg_strings
 
-    def convert_arg_line_to_args(self, arg_line):
+    def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
         return shlex.split(arg_line, comments=self.enable_comments)

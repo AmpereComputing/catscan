@@ -6,16 +6,22 @@ import atexit
 import json
 import logging
 import os
+from collections.abc import Callable
+from contextlib import suppress
 from fractions import Fraction
 from threading import Thread
 from typing import NamedTuple
 
+import urwid
 from perf_streams.event_stream import Event
 
 from catscan.data import CatscanEvent, EventData
 
+JsonScalar = str | int | float | bool | None
+JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
 
-def build_commit_index(event_row: EventData, data_name: str) -> dict[int, Event]:
+
+def build_commit_index(event_row: EventData, data_name: str) -> dict[int, int]:
     index = {}
     for event in event_row[:]:
         if data_name in event.data:
@@ -23,7 +29,7 @@ def build_commit_index(event_row: EventData, data_name: str) -> dict[int, Event]
     return index
 
 
-def build_pushout_index(commit_index: dict[int, Event], ps_per_cycle: int) -> dict[int, Event]:
+def build_pushout_index(commit_index: dict[int, int], ps_per_cycle: int) -> dict[int, int]:
     pushout_index = {}
     for inum, time in commit_index.items():
         if inum - 1 in commit_index:
@@ -70,20 +76,19 @@ class CommitSyncState(NamedTuple):
 
 
 class CommitSyncStateJSONEncoder(json.JSONEncoder):
-    def default(self, obj):
+    def default(self, obj: Fraction) -> JsonValue:
         if isinstance(obj, Fraction):
             return {"numerator": obj.numerator, "denominator": obj.denominator}
-        else:
-            return super().default(obj)
+        return super().default(obj)
 
-    def encode(self, obj):
+    def encode(self, obj: CommitSyncState | JsonValue) -> str:
         if isinstance(obj, CommitSyncState):
             return super().encode(obj._asdict())
         return super().encode(obj)
 
 
 class CommitSyncStateJSONDecoder(json.JSONDecoder):
-    def decode(self, json_string):
+    def decode(self, json_string: str) -> CommitSyncState:
         data = super().decode(json_string)
         return CommitSyncState(
             inum=data["inum"],
@@ -96,13 +101,13 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
 class CommitSyncer:
     def __init__(
         self,
-        fifo_basename,
-        sync_started_callback,
-        sync_stopped_callback,
-        sync_callback,
-        column_header_width=0,
-        pushout_index=None,
-    ):
+        fifo_basename: str,
+        sync_started_callback: Callable[[], None],
+        sync_stopped_callback: Callable[[], None],
+        sync_callback: Callable[[CommitSyncState], None],
+        column_header_width: int = 0,
+        pushout_index: dict[int, int] | None = None,
+    ) -> None:
         self.fifo_basename = fifo_basename
         self.sync_started_callback = sync_started_callback
         self.sync_stopped_callback = sync_stopped_callback
@@ -141,10 +146,8 @@ class CommitSyncer:
         self.latest_sync_state = None
 
     def cleanup_file(self, filename: str) -> None:
-        try:
+        with suppress(FileNotFoundError):
             os.unlink(filename)
-        except FileNotFoundError:
-            pass
 
     def make_fifo(self, filename: str) -> bool | None:
         try:
@@ -157,13 +160,14 @@ class CommitSyncer:
 
         return True
 
-    def start(self, main_loop):
-        """Starts commit syncing.
+    def start(self, main_loop: urwid.MainLoop | None) -> None:
+        """Start commit syncing.
 
         Args:
             main_loop (urwid.MainLoop | None): if a main-loop is provided,
             syncing will be maintained by an asyncio, otherwise the legacy
             Threading will be used
+
         """
         if main_loop is None:
             # Use threading
@@ -172,7 +176,7 @@ class CommitSyncer:
         else:
             # Notifier runs on main thread/loop as alarms are not thread-safe and must
             # be called from within main-loop thread
-            def notify(_data):
+            def notify(_data: bytes) -> bool:
                 if self.latest_sync_state is not None:
                     if self.future_sync:
                         self.main_loop.remove_alarm(self.future_sync)
@@ -204,10 +208,9 @@ class CommitSyncer:
             # Run in executor as it's blocking IO
             self.initialization_thread = self.main_loop.event_loop.run_in_executor(None, self._start)
 
-    def _start(self):
+    def _start(self) -> None:
         """
-        This should only be called inside the thread saved as
-        self.initialization_thread
+        Note: Should only be called inside the thread saved as self.initialization_thread.
         """
 
         atexit.register(self.cleanup_file, self.my_init_filename)
@@ -224,12 +227,12 @@ class CommitSyncer:
         # otherwise
         if self.is_primary:
             self.outgoing = open(self.fifo1_name, "w")
-            self.incoming = open(self.fifo2_name, "r")
+            self.incoming = open(self.fifo2_name)
         else:
-            self.incoming = open(self.fifo1_name, "r")
+            self.incoming = open(self.fifo1_name)
             self.outgoing = open(self.fifo2_name, "w")
 
-        with open(self.other_init_filename, "r") as init_file:
+        with open(self.other_init_filename) as init_file:
             from_json = json.load(init_file)
             self.other_column_header_width = from_json["column_header_width"]
             self.other_pushout_index = {int(inum): pushout for inum, pushout in from_json["pushout_index"].items()}
@@ -285,7 +288,7 @@ class CommitSyncer:
 
         pushout_events = []
 
-        def gen_pushout_events(commit_evt: Event, event_name, excess_pushout: int):
+        def gen_pushout_events(commit_evt: Event, event_name: str, excess_pushout: int) -> None:
             nonlocal next_event_id
             for i in range(-excess_pushout, 0):
                 time = commit_evt.time + i * ps_per_cycle
@@ -315,7 +318,7 @@ class CommitSyncer:
 
         return pushout_events
 
-    def stop(self):
+    def stop(self) -> None:
         if self.stopped:
             return
 
@@ -345,10 +348,10 @@ class CommitSyncer:
             self.notifier = None
 
     @property
-    def syncing(self):
-        return self.initialized and not self.stopped and self.outgoing
+    def syncing(self) -> bool:
+        return bool(self.initialized and not self.stopped and self.outgoing)
 
-    def send(self, sync_state: CommitSyncState):
+    def send(self, sync_state: CommitSyncState) -> None:
         if not self.syncing:
             logging.warning(
                 f"Dropping to-send commit sync message {sync_state} because the sync is either not initialized yet or has been closed/stopped."
@@ -359,7 +362,7 @@ class CommitSyncer:
         self.outgoing.write(f"{inum_json}\n")
         self.outgoing.flush()
 
-    def receive(self, sync_state: CommitSyncState):
+    def receive(self, sync_state: CommitSyncState) -> None:
         if not self.syncing:
             logging.warning(
                 f"Dropping received commit sync message {sync_state} because the sync is either not initialized yet or has been closed/stopped."
@@ -406,4 +409,4 @@ class CommitSyncer:
         else:
             self.latest_sync_state = adjusted_sync_state
             # Required to wakeup/interrupt main loop
-            os.write(self.notifier, "u".encode())
+            os.write(self.notifier, b"u")

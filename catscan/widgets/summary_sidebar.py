@@ -1,7 +1,7 @@
 # Copyright (c) 2024 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from typing import Callable
+from collections.abc import Callable
 
 import urwid
 
@@ -76,7 +76,7 @@ class SummaryTable(urwid.WidgetWrap):
 class SummarySidebar(urwid.WidgetWrap):
     """
     This widget display a summary of the current selection as a histogram of
-    the selected events' abbreviations
+    the selected events' abbreviations.
     """
 
     def __init__(
@@ -106,7 +106,7 @@ class SummarySidebar(urwid.WidgetWrap):
         self.table.update_stream_data(stream_data)
         self._invalidate()
 
-    def clear_selection(self, widget):
+    def clear_selection(self, _widget) -> bool:
         return self.on_clear_selection()
 
     def needs_scrollbar(self, size: tuple[int, int]) -> bool:

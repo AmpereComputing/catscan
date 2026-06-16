@@ -149,7 +149,7 @@ action_mouseevents_pretranslated = {
 
 # Map human-readable mouse events to urwid versions, which expects:
 # tuple("<optional keypress> mouse <action>", <mouse button number>)
-def translate_mouseevent(readable_name):
+def translate_mouseevent(readable_name: str) -> tuple[str, int]:
     try:
         keypress, mouse_button = readable_name.split(" ")
     except ValueError:

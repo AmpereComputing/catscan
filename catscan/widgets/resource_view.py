@@ -5,8 +5,8 @@ from typing import Any
 
 import urwid
 
-from catscan.data import EventStreamData
-from catscan.widgets.event_row import EventRow, GroupRow
+from catscan.data import EventData, EventStreamData, EventStreamDataEventView
+from catscan.widgets.event_row import EventRow, EventRowBase, GroupRow
 from catscan.widgets.event_view import EventView
 
 # TODO implement a version of a scrollable list box that scrolls sensibly with
@@ -27,18 +27,18 @@ class ResourceView(EventView):
 
     def __init__(
         self,
-        *args,
-        include_groups=True,
-        **kwargs,
+        *args: Any,
+        include_groups: bool = True,
+        **kwargs: Any,
     ) -> None:
         self._include_groups = include_groups
         super().__init__(*args, **kwargs)
 
     @property
-    def has_groups(self):
+    def has_groups(self) -> bool:
         return self._include_groups
 
-    def _create_rows_around_index(self, index: int, around: int = 0):
+    def _create_rows_around_index(self, index: int, around: int = 0) -> list[EventRowBase]:
         total_rows = self.total_rows()
         if index >= total_rows or index < 0:
             return []
@@ -61,7 +61,7 @@ class ResourceView(EventView):
 
         return included_rows
 
-    def create_row(self, row: Any, row_index: int, **kwargs):
+    def create_row(self, row: EventData, row_index: int, **kwargs: Any) -> EventRow:
         return EventRow(
             row,
             self.state,
@@ -71,7 +71,7 @@ class ResourceView(EventView):
             **kwargs,
         )
 
-    def create_group_row(self, group: Any, row_index: int, **kwargs):
+    def create_group_row(self, group: str, row_index: int, **kwargs: Any) -> GroupRow:
         return GroupRow(group, self.state, row_index, **kwargs)
 
     def add_rows(self):
@@ -96,8 +96,7 @@ class ResourceView(EventView):
             else:
                 max_group_name = 0
             return max(max_event_name, max_group_name)
-        else:
-            return 1
+        return 1
 
     def _update_selected_row_name(self, newly_selected_row: str) -> None:
         groups_seen = set()
@@ -114,29 +113,29 @@ class SubsetResourceView(ResourceView):
 
     def __init__(
         self,
-        *args,
-        max_rows=16,
-        include_groups=False,
-        allow_row_expansion=False,
-        **kwargs,
+        *args: Any,
+        max_rows: int = 16,
+        include_groups: bool = False,
+        allow_row_expansion: bool = False,
+        **kwargs: Any,
     ) -> None:
         self.events = []
         self._max_rows = max_rows
         self._allow_row_expansion = allow_row_expansion
         super().__init__(*args, include_groups=include_groups, length_hint=max_rows, **kwargs)
 
-    def iter_event_rows(self, **kwargs):
+    def iter_event_rows(self, **kwargs: Any) -> EventStreamDataEventView:
         return self.data_view(keys=self.events, **kwargs)
 
     def empty(self) -> bool:
         return not self.events
 
-    def add_event(self, event):
+    def add_event(self, event: str):
         if event not in self.events:
             self.events.append(event)
             self.update_rows()
 
-    def remove_event(self, event):
+    def remove_event(self, event: str):
         try:
             index = self.events.index(event)
             del self.events[index]
@@ -153,13 +152,13 @@ class SubsetResourceView(ResourceView):
 
     def update_stream_data(self, stream_data: EventStreamData) -> None:
         super().update_stream_data(stream_data)
-        all_events = set(row.name for row in self.stream_data.events())
+        all_events = {row.name for row in self.stream_data.events()}
         new_events = [event for event in self.events if event in all_events]
         if self.events != new_events:
             self.events = new_events
             self.update_rows()
 
-    def create_row(self, row: Any, row_index: int, **kwargs):
+    def create_row(self, row: EventData, row_index: int, **kwargs: Any) -> EventRow:
         return EventRow(
             row,
             self.state,
@@ -179,7 +178,7 @@ class SubsetResourceView(ResourceView):
                 self.list_walker.set_focus(i)
                 return
 
-    def rows(self, size: tuple[int], focus=False) -> int:
+    def rows(self, size: tuple[int], focus: bool = False) -> int:
         if not self.events:
             return 0
         rows = size[0]
@@ -196,7 +195,7 @@ class SubsetResourceView(ResourceView):
 
         return (maxcol, self.rows((maxrow,), focus=focus))
 
-    def _adjust_size(self, size: tuple[()] | tuple[int] | tuple[int, int], focus: bool = False):
+    def _adjust_size(self, size: tuple[()] | tuple[int] | tuple[int, int], focus: bool = False) -> tuple[int, int]:
         if len(size) == 1:
             size = (size[0], self.rows((self.max_rows(),), focus=focus))
         return size
@@ -226,5 +225,5 @@ class SubsetResourceView(ResourceView):
     ) -> str | None:
         return super().keypress(self._adjust_size(size), key)
 
-    def sizing(self):
+    def sizing(self) -> set[urwid.Sizing]:
         return frozenset([urwid.Sizing.FLOW, urwid.Sizing.BOX, urwid.Sizing.FIXED])

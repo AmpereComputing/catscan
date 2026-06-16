@@ -2,10 +2,11 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import math
+from collections.abc import Callable
 from enum import Enum
 from fractions import Fraction
 from functools import lru_cache
-from typing import Callable
+from typing import Any
 
 import urwid
 
@@ -370,7 +371,7 @@ class EventRow(EventRowBase):
         super().__init__()
 
     @property
-    def expanded(self):
+    def expanded(self) -> bool:
         return self.state.expand_rows and self.expanded_allowed
 
     def row_id(self) -> tuple[RowType, str]:
@@ -389,7 +390,7 @@ class EventRow(EventRowBase):
         return f"- {self.ed.short_name:<{self.state.column_header_width - 3}}│"[-self.state.column_header_width :]
 
     def ps_range_to_indices(self, start_ps: int, end_ps: int, cycles_per_index: int | Fraction) -> tuple[int, int]:
-        """Helper to return the starting/ending indices of a picosecond range"""
+        """Helper to return the starting/ending indices of a picosecond range."""
         start_offset_ps = self.state.start_ps - (self.state.start_ps % self.state.ps_per_cycle)
         indices_per_ps = 1.0 / (self.state.ps_per_cycle * cycles_per_index)
         start_index = math.floor((start_ps - start_offset_ps) * indices_per_ps)
@@ -399,7 +400,7 @@ class EventRow(EventRowBase):
     def index_to_ps_range(self, index: int, cycles_per_index: int | Fraction) -> tuple[int, int]:
         """
         Helper to return the picosecond range covered by a single 'index' (most
-        typically either a cycle or column)
+        typically either a cycle or column).
         """
         ps_per_index = self.state.ps_per_cycle * cycles_per_index
         difference_ps = self.state.start_ps % self.state.ps_per_cycle
@@ -432,7 +433,7 @@ class EventRow(EventRowBase):
             cycles_per_index,
         )
 
-    def _more_left(self, data, index, first, start, end):
+    def _more_left(self, data: tuple[list[int], list[int]], index: int, first: int, start: int, end: int) -> bool:
         if index != 0 or first >= index:
             return False
         if self.active_background:
@@ -440,7 +441,7 @@ class EventRow(EventRowBase):
 
         return all((item if isinstance(item, int) else len(item)) == 0 for item in data[: self.MORE_THRESHOLD])
 
-    def _more_right(self, data, index, last, start, end):
+    def _more_right(self, data: tuple[list[int], list[int]], index: int, last: int, start: int, end: int) -> bool:
         if index != len(data) - 1 or last <= index:
             return False
         if self.active_background:
@@ -586,10 +587,9 @@ class EventRow(EventRowBase):
             has_focus = (selection_start <= i <= selection_end) != focus and self.state.has_focus
             more_left = self._more_left(self.data, i, first, start, end)
             more_right = self._more_right(self.data, i, last, start, end)
-            if (more_left or more_right) and len(events) == rows:
-                events = events[:-1]
+            display_events = events[:-1] if (more_left or more_right) and len(events) == rows else events
 
-            for l, event in enumerate(events):
+            for l, event in enumerate(display_events):
                 color_idx, text = self.render_event(event, cols_this_cycle)
 
                 if highlighting_search_row and self.state.searcher.match(event):
@@ -616,7 +616,7 @@ class EventRow(EventRowBase):
 
             empty_attr = f"{even_odd_focused(self.row_index, has_focus)}_event_row"
 
-            for l in range(len(events), rows):
+            for l in range(len(display_events), rows):
                 if more_left:
                     byte_string = (self.MORE_LEFT_CHAR + self.EMPTY_CHAR * (cols_this_cycle - 1)).encode()
                 elif more_right:
@@ -683,14 +683,15 @@ class EventRow(EventRowBase):
             more_right = self._more_right(self.data, i, last, start, end)
             empty_attr = f"{even_odd_focused(self.row_index, has_focus)}_event_row"
             character = character_bytes
+            height = item
             if item < 0:
-                item = 1
+                height = 1
                 character = non_empty_character_bytes
 
-            if (more_left or more_right) and item == rows:
-                item -= 1
+            if (more_left or more_right) and height == rows:
+                height -= 1
 
-            for l in range(item):
+            for l in range(height):
                 byte_strings[l] += character
                 color_idx = colors[i]
                 attr = f"event_color_reversed_{color_idx}_{even_odd_focused(self.row_index, has_focus)}"
@@ -698,7 +699,7 @@ class EventRow(EventRowBase):
                     attr += self.active_background
                 attrs[l].append((attr, len(character)))
 
-            for l in range(item, rows):
+            for l in range(height, rows):
                 if more_left:
                     byte_string = self.MORE_LEFT_CHAR.encode()
                 elif more_right:
@@ -738,13 +739,13 @@ class EventRow(EventRowBase):
         return urwid.canvas.TextCanvas(lines, attrs)
 
     @property
-    def _transaction_row(self):
+    def _transaction_row(self) -> bool:
         return isinstance(self.ed, TransactionEventData)
 
-    def _make_selection(self, **kwargs) -> Selection:
+    def _make_selection(self, **kwargs: Any) -> Selection:
         return Selection(event_row=self.ed.key(), within_transaction=self._transaction_row, **kwargs)
 
-    def _adjust_selection(self, event: Event, **kwargs) -> Selection:
+    def _adjust_selection(self, event: Event, **kwargs: Any) -> Selection:
         return self.state.selection.adjust_within_row(event, duration=self.state.ps_per_cycle, **kwargs)
 
     def keypress(
@@ -790,12 +791,11 @@ class EventRow(EventRowBase):
             if second_event:
                 # If at least two events, select the entire region
                 return self._make_selection(time_range=(start_ps, end_ps))
-            elif first_event:
+            if first_event:
                 # If only one event, select only that event
                 return self._make_selection(event=first_event, duration=self.state.ps_per_cycle)
-            else:
-                # If no events, return an empty selection
-                return Selection()
+            # If no events, return an empty selection
+            return Selection()
 
         if not self.expanded:
             if self.state.cycles_per_char >= 1:
@@ -805,7 +805,7 @@ class EventRow(EventRowBase):
                 start_ps, end_ps = self.index_to_ps_range(cycle_index, 1)
 
             return ps_range_to_selection(start_ps, end_ps)
-        elif self.state.cycles_per_char > 1:
+        if self.state.cycles_per_char > 1:
             assert self.state.cycles_per_char.denominator == 1
 
             # Do not select an event if the user clicked on an 'empty'
@@ -819,18 +819,17 @@ class EventRow(EventRowBase):
             # Convert column to the bounds of this cell, in picoseconds
             col_start_ps, col_end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
             return ps_range_to_selection(col_start_ps, col_end_ps)
-        else:
-            # Convert column to an index into the data array (only
-            # guaranteed to exist and be valid when the current view is
-            # expanded with cycles_per_char <= 1)
-            data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
-            assert data_idx >= 0 and data_idx < len(self.data)
-            if row >= len(self.data[data_idx]):
-                return Selection()  # nothing there, return empty selection
-            event = self.data[data_idx][row]
-            return self._make_selection(event=event, duration=self.state.ps_per_cycle)
+        # Convert column to an index into the data array (only
+        # guaranteed to exist and be valid when the current view is
+        # expanded with cycles_per_char <= 1)
+        data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
+        assert data_idx >= 0 and data_idx < len(self.data)
+        if row >= len(self.data[data_idx]):
+            return Selection()  # nothing there, return empty selection
+        event = self.data[data_idx][row]
+        return self._make_selection(event=event, duration=self.state.ps_per_cycle)
 
-    def mouse_to_next_selection(self, col: int, reverse=False) -> Selection:
+    def mouse_to_next_selection(self, col: int, reverse: bool = False) -> Selection:
         if self.expanded:
             col_idx = col - self.state.column_header_width
             start_ps, _end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
@@ -870,3 +869,4 @@ class EventRow(EventRowBase):
             selection = self.mouse_to_next_selection(col, reverse=True)
             if selection:
                 self.on_make_selection(selection)
+        return None

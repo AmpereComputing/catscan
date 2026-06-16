@@ -2,12 +2,18 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
+from typing import Protocol
+
+
+class SupportsStringConversion(Protocol):
+    def __str__(self) -> str: ...
 
 
 class FilteredSuggestions(ABC):
     """Common completion suggestion interface."""
 
-    def __init__(self, fuzzy=False):
+    def __init__(self, fuzzy: bool = False) -> None:
         self._current = -1
         self._original = None
         self._original_suffix = None
@@ -17,7 +23,6 @@ class FilteredSuggestions(ABC):
     @abstractmethod
     def suggestions(self) -> list[str]:
         """Suggestions for filtering."""
-        pass
 
     def fallback_suggestions(self) -> list[str]:
         """Fallback suggestions if none of the suggestions match."""
@@ -29,7 +34,7 @@ class FilteredSuggestions(ABC):
         if self._original is None:
             return suggestions
 
-        def matches(text):
+        def matches(text: str) -> bool:
             return self._original in text if self._fuzzy else text.startswith(self._original)
 
         if matching := list(filter(matches, suggestions)):
@@ -38,18 +43,18 @@ class FilteredSuggestions(ABC):
         return list(filter(matches, self.fallback_suggestions()))
 
     @property
-    def total_current_suggestions(self):
+    def total_current_suggestions(self) -> int:
         return len(self._filtered_suggestions)
 
     def _get(self) -> str | None:
         filtered = self._filtered_suggestions
         if not filtered or self._current < 0:
             return self._original
-        elif self._current >= len(filtered):
+        if self._current >= len(filtered):
             return filtered[-1] if filtered else None
         return filtered[self._current]
 
-    def _assign(self, text: str | None):
+    def _assign(self, text: str | None) -> None:
         self._original = text
 
     def back(self, current_text: str) -> str | None:
@@ -96,7 +101,7 @@ class FilteredSuggestions(ABC):
             return value, 0
         return value + self._original_suffix, len(value)
 
-    def update(self):
+    def update(self) -> None:
         self._current = min(self._current, self.total_current_suggestions - 1)
 
     def reset(self, current_text: str | None = None) -> str | None:
@@ -111,14 +116,14 @@ class HistoricalCompletion(FilteredSuggestions):
 
     MAX_HISTORY = 64
 
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self._previous = []
 
     def suggestions(self) -> list[str]:
         return self._previous
 
-    def add(self, command: str):
+    def add(self, command: str) -> None:
         self._previous.insert(0, command)
         if len(self._previous) > self.MAX_HISTORY:
             self._previous.pop()
@@ -127,8 +132,8 @@ class HistoricalCompletion(FilteredSuggestions):
 
 
 class KeywordCompletion(FilteredSuggestions):
-    def __init__(self, suggestions, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, suggestions: Iterable[SupportsStringConversion], *, fuzzy: bool = False) -> None:
+        super().__init__(fuzzy=fuzzy)
         self._suggestions = list(map(str, suggestions))
         self.update()
 
@@ -137,8 +142,13 @@ class KeywordCompletion(FilteredSuggestions):
 
 
 class CallableCompletion(FilteredSuggestions):
-    def __init__(self, suggestion_callable, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        suggestion_callable: Callable[[], Iterable[SupportsStringConversion]],
+        *,
+        fuzzy: bool = False,
+    ) -> None:
+        super().__init__(fuzzy=fuzzy)
         self._suggestions = suggestion_callable
         self.update()
 

@@ -3,12 +3,13 @@
 
 import logging
 import math
-from typing import Any, Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
+from typing import Any
 
 import urwid
 from perf_streams.event_stream import Event
 
-from catscan.data import EventStreamData
+from catscan.data import EventStreamData, EventStreamDataEventView, EventStreamDataView
 from catscan.state import CatscanState, Selection
 from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents
 from catscan.widgets.event_row import EventRow, EventRowBase, RowType
@@ -25,7 +26,7 @@ class View:
         self.stream_data = stream_data
         self.parent_view = None
 
-    def data_view(self, **kwargs):
+    def data_view(self, **kwargs: Any) -> EventStreamData:
         return self.stream_data
 
     def update_stream_data(self, stream_data: EventStreamData) -> None:
@@ -58,20 +59,20 @@ class View:
     def focused_row(self) -> tuple[RowType, str | int]:
         raise NotImplementedError
 
-    def focused_rows(self, row_type: RowType, all_views=False) -> list[str | int]:
+    def focused_rows(self, row_type: RowType, all_views: bool = False) -> list[str | int]:
         rt, r = self.focused_row()
         return [r] if rt is row_type else []
 
-    def focused_event_rows(self, all_views=False):
+    def focused_event_rows(self, all_views: bool = False) -> list[str | int]:
         return self.focused_rows(RowType.EVENT, all_views=all_views)
 
-    def focused_group_rows(self, all_views=False):
+    def focused_group_rows(self, all_views: bool = False) -> list[str | int]:
         return self.focused_rows(RowType.GROUP, all_views=all_views)
 
-    def focused_time_range(self, all_views=False) -> tuple[int, int]:
+    def focused_time_range(self, all_views: bool = False) -> tuple[int, int]:
         raise NotImplementedError
 
-    def focused_views(self, all_views=False) -> list[str]:
+    def focused_views(self, all_views: bool = False) -> list[str]:
         return [self.name] if self.has_focus() else []
 
     def center_column(self, maxcol: int | None = None) -> int:
@@ -94,7 +95,7 @@ class Views(View):
         for view in views:
             self.add(view)
 
-    def add(self, view) -> View:
+    def add(self, view: View) -> View:
         if self.name:
             view.name = f"{self.name}.{view.name}"
 
@@ -102,16 +103,13 @@ class Views(View):
         self._views[view.name] = view
         return view
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator:
         return iter(self._views)
 
-    def __getitem__(self, fullname) -> View:
+    def __getitem__(self, fullname: str) -> View:
         name = fullname.replace(f"{self.name}.", "") if self.name else fullname
         parts = name.split(".")
-        if len(parts) > 1:
-            local_name = f"{self.name}.{parts[0]}" if self.name else parts[0]
-        else:
-            local_name = fullname
+        local_name = (f"{self.name}.{parts[0]}" if self.name else parts[0]) if len(parts) > 1 else fullname
         view = self._views[local_name]
         if len(parts) == 1 or not isinstance(view, Views):
             return view
@@ -119,14 +117,14 @@ class Views(View):
         return view[fullname]
 
     @property
-    def names(self):
+    def names(self) -> Iterable[str]:
         return self._views.keys()
 
     @property
-    def event_views(self):
+    def event_views(self) -> Iterable[View]:
         return self._views.values()
 
-    def items(self):
+    def items(self):  # noqa: ANN201
         return self._views.items()
 
     def update_stream_data(self, stream_data: EventStreamData) -> None:
@@ -156,7 +154,7 @@ class Views(View):
         self._last_focused_view = name
         super().update_focus(name)
 
-    def focused_views(self, all_views=False) -> list[str]:
+    def focused_views(self, all_views: bool = False) -> list[str]:
         focused = []
         if all_views:
             for view in self.event_views:
@@ -166,7 +164,7 @@ class Views(View):
 
         return focused
 
-    def focused_rows(self, row_type: RowType, all_views=False) -> list[str]:
+    def focused_rows(self, row_type: RowType, all_views: bool = False) -> list[str]:
         focused = []
         if all_views:
             for view in self.event_views:
@@ -176,7 +174,7 @@ class Views(View):
 
         return focused
 
-    def focused_time_range(self, all_views=False):
+    def focused_time_range(self, all_views: bool = False) -> tuple[int, int]:
         start = None
         end = None
         if all_views:
@@ -189,10 +187,10 @@ class Views(View):
 
         return start, end
 
-    def max_column_header_width(self):
+    def max_column_header_width(self) -> int:
         return max(view.max_column_header_width() for view in self.event_views)
 
-    def view_widgets(self):
+    def view_widgets(self) -> list[View]:
         non_empty_views = []
         for view in self.event_views:
             max_rows = view.max_rows() if hasattr(view, "max_rows") else None
@@ -280,7 +278,7 @@ class LazyEventListWalker(urwid.ListWalker):
         for key in to_remove:
             del self._rows[key]
 
-    def __getitem__(self, position: int):
+    def __getitem__(self, position: int) -> EventRowBase:
         if position >= len(self):
             raise IndexError
         if position not in self._rows:
@@ -290,10 +288,10 @@ class LazyEventListWalker(urwid.ListWalker):
 
         return self._rows[position]
 
-    def __len__(self):
+    def __len__(self) -> int:
         if self._total_rows is None:
             expand, all_rows = self._all_rows_func()
-            group_rows = len(set(ed.group for ed in all_rows)) if self._has_groups else 0
+            group_rows = len({ed.group for ed in all_rows}) if self._has_groups else 0
             event_rows = sum(max(1, ed.max_events_per_time()) for ed in all_rows) if expand else len(all_rows)
             self._total_rows = event_rows + group_rows
 
@@ -314,7 +312,7 @@ class LazyEventListBox(urwid.ListBox):
         self._last_scrollpos = (None, None)
         super().__init__(body)
 
-    def _calculate_scrollpos(self, all_rows, start: int, stop: int):
+    def _calculate_scrollpos(self, all_rows: EventStreamDataView, start: int, stop: int) -> int:
         group_rows = 0
         if self._has_groups:
             prev = None
@@ -339,10 +337,7 @@ class LazyEventListBox(urwid.ListBox):
         mid, top, _bottom = self.calculate_visible(self._rendered_size, focus)
         start_row = top.trim
 
-        if top.fill:
-            pos = top.fill[-1].position
-        else:
-            pos = mid.focus_pos
+        pos = top.fill[-1].position if top.fill else mid.focus_pos
 
         expand, all_rows = self._all_rows_func()
         if not expand:
@@ -429,10 +424,10 @@ class EventView(urwid.WidgetWrap, View):
         urwid.WidgetWrap.__init__(self, self.scrollable)
 
     @property
-    def has_groups(self):
+    def has_groups(self) -> bool:
         return False
 
-    def _construct_list_box(self, length_hint=1):
+    def _construct_list_box(self, length_hint: int = 1):
         many_rows = length_hint > 512
         assign_to_scrollbar = self.list_box is not None and (many_rows ^ isinstance(self.list_box, LazyEventListBox))
         if not assign_to_scrollbar and self.list_box is not None:
@@ -452,34 +447,34 @@ class EventView(urwid.WidgetWrap, View):
         if assign_to_scrollbar:
             self.scrollable._original_widget = self.list_box
 
-    def data_view(self, **kwargs):
+    def data_view(self, **kwargs: Any) -> EventStreamDataEventView:
         return self.stream_data.events(**kwargs)
 
-    def iter_event_rows(self, **kwargs):
+    def iter_event_rows(self, **kwargs: Any) -> EventStreamDataEventView:
         return self.data_view(**kwargs)
 
-    def on_make_selection(self, selection: Any | Selection, *args, **kwargs):
+    def on_make_selection(self, selection: Any | Selection, *args: Any, **kwargs: Any) -> bool:
         if isinstance(selection, Selection):
             selection.assign_view(self.name)
         return self._on_make_selection(selection, *args, **kwargs)
 
-    def on_extend_selection(self, selection: Any | Selection, *args, **kwargs):
+    def on_extend_selection(self, selection: Any | Selection, *args: Any, **kwargs: Any) -> bool:
         if isinstance(selection, Selection):
             selection.assign_view(self.name)
         return self._on_extend_selection(selection, *args, **kwargs)
 
-    def _all_rows(self):
+    def _all_rows(self) -> tuple[bool, EventStreamDataEventView]:
         return self.state.expand_rows, self.iter_event_rows()
 
-    def total_rows(self):
+    def total_rows(self) -> int:
         if self._total_rows is None:
-            group_rows = len(set(ed.group for ed in self.iter_event_rows())) if self.has_groups else 0
+            group_rows = len({ed.group for ed in self.iter_event_rows()}) if self.has_groups else 0
             event_rows = len(self.iter_event_rows())
             self._total_rows = group_rows + event_rows
 
         return self._total_rows
 
-    def _create_rows_around_index(self, index: int, around: int = 0):
+    def _create_rows_around_index(self, index: int, around: int = 0) -> list[EventRowBase]:
         total_rows = self.total_rows()
         if index >= total_rows or index < 0:
             return []
@@ -489,10 +484,10 @@ class EventView(urwid.WidgetWrap, View):
         stop = min(total_rows, index + around + 1)
         return [self.create_row(row, start + offset) for offset, row in enumerate(rows.within_indicies(start, stop))]
 
-    def create_row(self, row: Any, row_index: int, **kwargs):
+    def create_row(self, row: Any, row_index: int, **kwargs: Any):
         raise NotImplementedError
 
-    def create_empty_row(self):
+    def create_empty_row(self) -> EventRowBase:
         return EventRowBase()
 
     def add_rows(self):
@@ -543,7 +538,7 @@ class EventView(urwid.WidgetWrap, View):
         rowwidget, _ = self.list_walker.get_focus()
         return rowwidget.row_id()
 
-    def focused_time_range(self, all_views=False) -> tuple[int, int]:
+    def focused_time_range(self, all_views: bool = False) -> tuple[int, int]:
         rowwidget, _ = self.list_walker.get_focus()
         if isinstance(rowwidget, EventRow):
             return rowwidget.ed.start_time, rowwidget.ed.end_time
@@ -728,7 +723,7 @@ class PrimarySplitEventView(RowViews):
         self,
         name: str,
         primary: EventView,
-        *secondary,
+        *secondary: EventView,
         primary_key_actions: set[ACTIONS] | None = None,
     ):
         self._primary = primary
