@@ -77,7 +77,7 @@ class TransactionSyncDataTest(CatscanDataTest):
 
         tx = writer.begin_transaction(time=70)
         cls.txids.append(tx.txid)
-        writer.post_event(work, time=70, transaction=tx)
+        writer.post_event(work, time=70, transaction=tx, values={inum: 999})
         writer.end_transaction(tx, time=80)
 
         tx = writer.begin_transaction(time=90)
@@ -311,6 +311,12 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top.send_commit_sync()
 
         self.assertEqual(top.commit_syncer.sent, [])
+
+    def test_non_commit_event_with_index_is_not_transaction_anchor(self):
+        top = self.make_top()
+
+        self.assertNotIn(999, top.commit_sync_index_to_transaction_row)
+        self.assertNotIn(self.txids[2], top.transaction_row_commit_candidates)
 
     def test_scrolling_down_sends_bottom_alignment(self):
         top = self.make_top(size=(120, 2))

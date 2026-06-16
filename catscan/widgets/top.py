@@ -488,7 +488,7 @@ class Top(urwid.widget.Widget):
             for txid, transaction_row in self.stream_data.transaction_event_rows.items():
                 candidates = []
                 for event in transaction_row[:]:
-                    if self.commit_sync_data_name in event.data:
+                    if event.name == self.commit_sync_event and self.commit_sync_data_name in event.data:
                         sync_index = event.data[self.commit_sync_data_name]
                         candidates.append(sync_index)
                         self.commit_sync_index_to_transaction_row[sync_index] = txid
