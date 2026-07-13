@@ -219,7 +219,7 @@ class CommitSyncer:
                 "column_header_width": self.my_column_header_width,
                 "pushout_index": self.my_pushout_index,
             }
-            json.dump(to_json, init_file, indent=2)
+            json.dump(to_json, init_file)
             init_file.flush()
 
         # Note: Both sides must open fifo1 first, because the calls to open the
