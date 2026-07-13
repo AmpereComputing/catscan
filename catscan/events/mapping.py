@@ -210,7 +210,7 @@ class ValueMapAbbreviation(DynamicAbbreviation):
 
 class CallableAbbreviation(DynamicAbbreviation):
     def __init__(
-            self, patterns: list[str], generate: Callable[[object, Event], str | None], setup: Callable[[object, "Mapper"], None], exclude: list[str] | None = None
+            self, patterns: list[str], generate: Callable[[object, Event], str | None], setup: Callable[[object, "Mapper"], None] | None = None, exclude: list[str] | None = None
     ):
         if setup is not None:
             self.setup = MethodType(setup, self)
