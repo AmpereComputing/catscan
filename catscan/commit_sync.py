@@ -272,7 +272,11 @@ class CommitSyncer:
         cumulative_pushout = 0
         cumulative_pushout_center = cumulative_pushout
         for inum in range(min_inum, max_inum + 1):
-            diff = self.my_pushout_index[inum] - self.other_pushout_index[inum]
+            try:
+                diff = self.my_pushout_index[inum] - self.other_pushout_index[inum]
+            except KeyError:
+                continue
+
             if diff > 1 or (diff == 1 and last_pushout_difference != -1):
                 excess_pushout[inum] = diff
             if diff:
