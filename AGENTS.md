@@ -7,6 +7,15 @@
   account user-interface patterns and not significantly disrupt existing users
   or their configurations/workflows without good reason.
 
+## Running
+
+Running portions of the code must be done in hatch environment, like:
+
+    hatch run python -c 'print("hello")'
+
+Note, if environment setup is needed, `--config .hatch/config.toml` may need to be
+specified so that data/caching is done within the workspace.
+
 ## Testing
 
 Tests use `unittest`, and are run through `hatch` for dependencies. To run all tests:
@@ -43,7 +52,7 @@ a git commit message *and* in the code. Labeling via git messages is
 For git messages, use the following commit template:
 
     <SUMMARY OF CHANGE, max of 50 characters>
-    <DETAILS OF CHANGE, wrap at 72 characters>
+    <DETAILS OF CHANGE, wrap at 72 characters, markdown-like bulleted list>
 
     Assisted-by: <AGENT NAME>:<MODEL VERSION>
 
@@ -56,6 +65,8 @@ Comments can be grouped semantically by block/function/class/file, etc.
 Per-line labeling is *not* required. Only add a comment if a large amount of
 code is generated from scratch.
 
-`MODEL_VERSION` is the most specific model identifier exposed by the runtime
-(including reasoning level). If only a partial identifier is available, use
-that partial identifier as-is. Do not guess missing version details.
+ `AGENT NAME` may be the name of harness used. `MODEL VERSION` is the most
+ specific model identifier exposed by the runtime (including reasoning level
+ and harness). If only a partial identifier is available, use that partial
+ identifier as-is. Do not guess missing version details. An example of the full
+ name may be: "Codex:gpt-5.5 high".

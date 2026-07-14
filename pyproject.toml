@@ -42,9 +42,15 @@ catscan = 'catscan:__main__.main'
 [tool.hatch.metadata]
 allow-direct-references = true
 
+[tool.hatch.envs.default]
+path = ".hatch/env"
+
 [tool.hatch.envs.hatch-test.scripts]
 # Override the default 'run' script to use 'unittest'
 run = "python -m unittest discover {args}"
+
+[tool.uv]
+cache-dir = ".uv/cache"
 
 [tool.ruff]
 # Configure similar to black (except for line-length)
