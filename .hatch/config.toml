@@ -1,0 +1,9 @@
+mode = "local"
+project = ""
+shell = ""
+
+[dirs]
+project = []
+python = "isolated"
+data = ".hatch/data"
+cache = ".hatch/cache"
