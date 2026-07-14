@@ -55,6 +55,26 @@ What this does:
 
 ## User Guide
 
+### Configuration
+
+#### Mapping files
+
+When abbreviations are too dynamic for the built-in `--static-abbrev`,
+`--value-string-abbrev`, or `--value-map-abbrev` options you can use
+`--mapping-file` to provide a python file for adding arbitrary abbreviations.
+Primarily these are for `catscan.events.mapping.DynamicAbbreviation`. Within
+your python file, you can use the built-in `add_abbreviation(...)` to add a new
+abbreviation. For example:
+
+```python
+from catscan.events.mapping import CallableAbbreviation
+
+def abbreviate(self, event):
+    return "h" if event.data["hit"] else "m"
+
+add_abbreviation(CallableAbbreviation(["lookup"], generate=abbreviate))
+```
+
 ### Types of views
 
 Multiple "views" of events are supported; however, you can only start `catscan`
