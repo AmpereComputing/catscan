@@ -1171,6 +1171,19 @@ class Top(urwid.widget.Widget):
             logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
             return
 
+        if self.commit_sync_view_mode == DataView.TRANSACTIONS:
+            transaction_row = self.commit_sync_index_to_transaction_row.get(sync_state.sync_index)
+            if transaction_row is None:
+                logging.info(f"Received time sync_index not in transaction-row index: {sync_state.sync_index}")
+                return
+
+            self._suppress_transaction_commit_sync = True
+            try:
+                self._transaction_view.scroll_row_to_top(transaction_row)
+            finally:
+                self._suppress_transaction_commit_sync = False
+            return
+
         # Calculate the time at the left-hand side of the screen based on our
         # scaling of the received offset from the reference sync_index
         sync_index_commit_ps = self.commit_sync_index[sync_state.sync_index]

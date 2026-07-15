@@ -127,6 +127,22 @@ class TransactionSyncDataTest(CatscanDataTest):
             transaction_end=None,
         )
 
+    def load_resource_event_data(self):
+        return get_event_data(
+            self.test_filename,
+            "resource",
+            mapper=Mapper([], [], []),
+            event_filters=trace_events.EventFilters(),
+            events=[
+                trace_events.trace_spec("work"),
+                trace_events.trace_spec("core.commit"),
+            ],
+            post_to_tx=[],
+            pull_from_tx=[],
+            occupancy=[],
+            pct_loaded_callback=lambda _pct: None,
+        )
+
 
 class TestEventViewViewport(TransactionSyncDataTest):
     def make_state(self):
@@ -168,20 +184,7 @@ class TestEventViewViewport(TransactionSyncDataTest):
         return view, events
 
     def make_resource_data(self):
-        return get_event_data(
-            self.test_filename,
-            "resource",
-            mapper=Mapper([], [], []),
-            event_filters=trace_events.EventFilters(),
-            events=[
-                trace_events.trace_spec("work"),
-                trace_events.trace_spec("core.commit"),
-            ],
-            post_to_tx=[],
-            pull_from_tx=[],
-            occupancy=[],
-            pct_loaded_callback=lambda _pct: None,
-        )
+        return self.load_resource_event_data()
 
     def make_resource_view(self, view_type=ResourceView, **kwargs):
         events = []
@@ -296,9 +299,7 @@ class TestEventViewViewport(TransactionSyncDataTest):
     def test_focus_row_change_receives_movement_alignment(self):
         alignments = []
         view, _events = self.make_view(
-            focus_callback=lambda _view, _focused_row_key, movement_alignment: alignments.append(
-                movement_alignment
-            )
+            focus_callback=lambda _view, _focused_row_key, movement_alignment: alignments.append(movement_alignment)
         )
         size = (80, 1)
         view.render(size, focus=True)
@@ -340,7 +341,8 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
     def make_top(self, size=(120, 4), view=DataView.TRANSACTIONS):
         top = Top(Args(view=view))
         top.cached_maxcol = 120
-        top.update_stream_data(self.esd)
+        stream_data = self.load_resource_event_data() if view == DataView.RESOURCE else self.esd
+        top.update_stream_data(stream_data)
         top.render(size, focus=True)
         return top
 
@@ -491,6 +493,89 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(top.state.start_ps, 100)
         self.assertEqual(top.state.cycles_per_char, initial_cycles_per_char)
         self.assertEqual(top.state.expand_rows, initial_expand_rows)
+
+    def test_transaction_view_receives_resource_time_sync_as_row_scroll(self):
+        top = self.make_top()
+
+        top.receive_commit_sync(
+            CommitSyncState(
+                sync_index=40,
+                cycles_per_char=Fraction(1, 8),
+                expand_rows=True,
+                chars_rel_to_start=17,
+                mode="time",
+            )
+        )
+
+        self.assertEqual(top._transaction_view.top_visible_row_key(), self.txids[3])
+
+    def test_resource_time_sync_leaves_transaction_horizontal_state_unchanged(self):
+        top = self.make_top()
+        requested_state = top.state.copy_with(start_ps=1230, cycles_per_char=Fraction(4, 1), expand_rows=True)
+        top.update_state(requested_state)
+        initial_state = top.state
+
+        top.receive_commit_sync(
+            CommitSyncState(
+                sync_index=50,
+                cycles_per_char=Fraction(1, 8),
+                expand_rows=False,
+                chars_rel_to_start=17,
+                mode="time",
+            )
+        )
+
+        self.assertEqual(top.state.start_ps, initial_state.start_ps)
+        self.assertEqual(top.state.cycles_per_char, initial_state.cycles_per_char)
+        self.assertEqual(top.state.expand_rows, initial_state.expand_rows)
+
+    def test_missing_resource_time_sync_index_does_not_scroll_transaction_view(self):
+        top = self.make_top()
+        initial_focus = top._transaction_view.focused_row()[1]
+        initial_top = top._transaction_view.top_visible_row_key()
+
+        top.receive_commit_sync(
+            CommitSyncState(
+                sync_index=12345,
+                cycles_per_char=Fraction(1, 8),
+                expand_rows=True,
+                chars_rel_to_start=17,
+                mode="time",
+            )
+        )
+
+        self.assertEqual(top._transaction_view.focused_row()[1], initial_focus)
+        self.assertEqual(top._transaction_view.top_visible_row_key(), initial_top)
+
+    def test_remote_resource_time_scroll_does_not_echo_transaction_sync(self):
+        top = self.make_top()
+        top.commit_syncer = DummyCommitSyncer(other_commit_index={40: 100})
+
+        top.receive_commit_sync(
+            CommitSyncState(
+                sync_index=40,
+                cycles_per_char=Fraction(1, 8),
+                expand_rows=True,
+                chars_rel_to_start=17,
+                mode="time",
+            )
+        )
+
+        self.assertEqual(top.commit_syncer.sent, [])
+        self.assertFalse(top._suppress_transaction_commit_sync)
+
+    def test_resource_sender_time_sync_scrolls_transaction_receiver(self):
+        sender = self.make_top(view=DataView.RESOURCE)
+        receiver = self.make_top()
+        sender.update_state(sender.state.copy_with(start_ps=100))
+        sender.commit_syncer = DummyCommitSyncer(other_pushout_index=receiver.pushout_index)
+
+        sender.send_commit_sync()
+
+        self.assertEqual(len(sender.commit_syncer.sent), 1)
+        self.assertEqual(sender.commit_syncer.sent[0].mode, "time")
+        receiver.receive_commit_sync(sender.commit_syncer.sent[0])
+        self.assertEqual(receiver._transaction_view.top_visible_row_key(), self.txids[3])
 
     def test_remote_transaction_row_scroll_does_not_echo(self):
         top = self.make_top()
