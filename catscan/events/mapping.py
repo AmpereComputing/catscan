@@ -107,7 +107,7 @@ class DynamicAbbreviation(ABC):
         self.patterns = [re.compile(pattern) for pattern in patterns]
         self.exclude_patterns = [re.compile(pattern) for pattern in exclude_patterns] if exclude_patterns else []
 
-    def setup(self, mapper: "Mapper") -> None:
+    def setup(self, mapper: "Mapper") -> None:  # noqa: B027
         """Sets up any info from mapper for generation (e.g. disassembler)."""
 
     def value_with_suffix(self, event: Event, suffix: str) -> str | None:
@@ -210,7 +210,11 @@ class ValueMapAbbreviation(DynamicAbbreviation):
 
 class CallableAbbreviation(DynamicAbbreviation):
     def __init__(
-            self, patterns: list[str], generate: Callable[[object, Event], str | None], setup: Callable[[object, "Mapper"], None] | None = None, exclude: list[str] | None = None
+        self,
+        patterns: list[str],
+        generate: Callable[[object, Event], str | None],
+        setup: Callable[[object, "Mapper"], None] | None = None,
+        exclude: list[str] | None = None,
     ):
         if setup is not None:
             self.setup = MethodType(setup, self)
