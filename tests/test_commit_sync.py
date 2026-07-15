@@ -1,6 +1,7 @@
 # Copyright (c) 2024-2025 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import json
 import tempfile
 import time
 import unittest
@@ -161,9 +162,16 @@ class TestCommitSync(unittest.TestCase):
                 expand_rows=True,
                 chars_rel_to_start=-7,
                 mode=mode,
-                transaction_row_align="bottom" if mode == "transaction_row" else None,
+                movement_alignment="after" if mode == "transaction_row" else None,
             )
+            encoded = encoder.encode(state)
             self.assertEqual(decoder.decode(encoder.encode(state)), state)
+            encoded_state = json.loads(encoded)
+            if mode == "transaction_row":
+                self.assertEqual(encoded_state["movement_alignment"], "after")
+                self.assertEqual(encoded_state["transaction_row_align"], "bottom")
+            else:
+                self.assertNotIn("transaction_row_align", encoded_state)
 
     def test_state_json_decode_defaults_mode_to_time(self):
         decoder = CommitSyncStateJSONDecoder()
@@ -174,11 +182,11 @@ class TestCommitSync(unittest.TestCase):
         )
 
         self.assertEqual(state.mode, "time")
-        self.assertIsNone(state.transaction_row_align)
+        self.assertIsNone(state.movement_alignment)
         self.assertEqual(state.sync_index, 9)
         self.assertEqual(state.cycles_per_char, Fraction(5, 4))
 
-    def test_state_json_decode_defaults_transaction_row_align_to_none(self):
+    def test_state_json_decode_defaults_movement_alignment_to_none(self):
         decoder = CommitSyncStateJSONDecoder()
 
         state = decoder.decode(
@@ -187,7 +195,19 @@ class TestCommitSync(unittest.TestCase):
         )
 
         self.assertEqual(state.mode, "transaction_row")
-        self.assertIsNone(state.transaction_row_align)
+        self.assertIsNone(state.movement_alignment)
+
+    def test_state_json_decode_legacy_transaction_row_align(self):
+        decoder = CommitSyncStateJSONDecoder()
+
+        state = decoder.decode(
+            '{"sync_index": 9, "cycles_per_char": {"numerator": 5, "denominator": 4}, '
+            '"expand_rows": false, "chars_rel_to_start": 11, "mode": "transaction_row", '
+            '"transaction_row_align": "bottom"}'
+        )
+
+        self.assertEqual(state.mode, "transaction_row")
+        self.assertEqual(state.movement_alignment, "after")
 
     def test_transaction_row_receive_bypasses_pushout_scaling(self):
         received = []
@@ -215,7 +235,7 @@ class TestCommitSync(unittest.TestCase):
 
 
 class TestCommitSyncHandshake(unittest.TestCase):
-    def test_handshake_rejects_mixed_view_modes(self):
+    def test_handshake_accepts_mixed_view_modes(self):
         started = []
         stopped = []
 
@@ -244,13 +264,20 @@ class TestCommitSyncHandshake(unittest.TestCase):
             second_syncer.start(None)
 
             for _ in range(10):
-                if first_syncer.stopped and second_syncer.stopped:
+                if first_syncer.initialized and second_syncer.initialized:
                     break
                 time.sleep(0.5)
 
-            self.assertEqual(started, [])
-            self.assertTrue(first_syncer.stopped)
-            self.assertTrue(second_syncer.stopped)
-            self.assertTrue(stopped)
-            self.assertIn("same view mode", first_syncer.failure_message)
-            self.assertIn("same view mode", second_syncer.failure_message)
+            self.assertEqual(sorted(started), ["first", "second"])
+            self.assertTrue(first_syncer.initialized)
+            self.assertTrue(second_syncer.initialized)
+            self.assertFalse(first_syncer.stopped)
+            self.assertFalse(second_syncer.stopped)
+            self.assertIsNone(first_syncer.failure_message)
+            self.assertIsNone(second_syncer.failure_message)
+            self.assertEqual(first_syncer.other.view_mode, DataView.TRANSACTIONS)
+            self.assertEqual(second_syncer.other.view_mode, DataView.RESOURCE)
+
+            first_syncer.stop()
+            second_syncer.stop()
+            self.assertEqual(sorted(stopped), ["first", "second"])

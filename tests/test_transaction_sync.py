@@ -256,11 +256,11 @@ class TestEventViewViewport(TransactionSyncDataTest):
         view.keypress(size, "up")
         self.assertEqual(view.last_vertical_direction(), "up")
 
-    def test_focus_row_change_receives_scroll_alignment(self):
+    def test_focus_row_change_receives_movement_alignment(self):
         alignments = []
         view, _events = self.make_view(
-            focus_callback=lambda _view, _focused_row_key, transaction_row_align: alignments.append(
-                transaction_row_align
+            focus_callback=lambda _view, _focused_row_key, movement_alignment: alignments.append(
+                movement_alignment
             )
         )
         size = (80, 1)
@@ -270,12 +270,12 @@ class TestEventViewViewport(TransactionSyncDataTest):
         view.keypress(size, "down")
         view.keypress(size, "up")
 
-        self.assertEqual(alignments, ["bottom", "top"])
+        self.assertEqual(alignments, ["after", "before"])
 
 
 class TestTopTransactionCommitSync(TransactionSyncDataTest):
-    def make_top(self, size=(120, 4)):
-        top = Top(Args())
+    def make_top(self, size=(120, 4), view=DataView.TRANSACTIONS):
+        top = Top(Args(view=view))
         top.cached_maxcol = 120
         top.update_stream_data(self.esd)
         top.render(size, focus=True)
@@ -308,7 +308,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top.send_commit_sync()
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
-        self.assertIsNone(top.commit_syncer.sent[0].transaction_row_align)
+        self.assertIsNone(top.commit_syncer.sent[0].movement_alignment)
 
     def test_earliest_shared_commit_in_row_is_used(self):
         top = self.make_top()
@@ -335,7 +335,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertNotIn(999, top.commit_sync_index_to_transaction_row)
         self.assertNotIn(self.txids[2], top.transaction_row_commit_candidates)
 
-    def test_scrolling_down_sends_bottom_alignment(self):
+    def test_scrolling_down_sends_after_alignment(self):
         top = self.make_top(size=(120, 2))
         top.commit_syncer = DummyCommitSyncer(other_commit_index=top.commit_sync_index)
 
@@ -343,9 +343,9 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
         self.assertEqual(top.commit_syncer.sent[0].sync_index, 20)
-        self.assertEqual(top.commit_syncer.sent[0].transaction_row_align, "bottom")
+        self.assertEqual(top.commit_syncer.sent[0].movement_alignment, "after")
 
-    def test_scrolling_up_sends_top_alignment(self):
+    def test_scrolling_up_sends_before_alignment(self):
         top = self.make_top(size=(120, 2))
         top._transaction_view.scroll_row_to_top(self.txids[2])
         top.commit_syncer = DummyCommitSyncer(other_commit_index=top.commit_sync_index)
@@ -355,7 +355,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
         self.assertEqual(top.commit_syncer.sent[0].sync_index, 20)
-        self.assertEqual(top.commit_syncer.sent[0].transaction_row_align, "top")
+        self.assertEqual(top.commit_syncer.sent[0].movement_alignment, "before")
 
     def test_inbound_transaction_row_sync_scrolls_row_to_top(self):
         top = self.make_top()
@@ -382,7 +382,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
                 expand_rows=False,
                 chars_rel_to_start=0,
                 mode="transaction_row",
-                transaction_row_align="bottom",
+                movement_alignment="after",
             )
         )
 
@@ -408,6 +408,26 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(top.state.start_ps, initial_state.start_ps)
         self.assertEqual(top.state.cycles_per_char, initial_state.cycles_per_char)
         self.assertEqual(top.state.expand_rows, initial_state.expand_rows)
+
+    def test_resource_view_receives_transaction_row_sync_as_commit_time(self):
+        top = self.make_top(view=DataView.RESOURCE)
+        initial_cycles_per_char = top.state.cycles_per_char
+        initial_expand_rows = top.state.expand_rows
+
+        top.receive_commit_sync(
+            CommitSyncState(
+                sync_index=40,
+                cycles_per_char=Fraction(1, 8),
+                expand_rows=not initial_expand_rows,
+                chars_rel_to_start=17,
+                mode="transaction_row",
+                movement_alignment="after",
+            )
+        )
+
+        self.assertEqual(top.state.start_ps, 100)
+        self.assertEqual(top.state.cycles_per_char, initial_cycles_per_char)
+        self.assertEqual(top.state.expand_rows, initial_expand_rows)
 
     def test_remote_transaction_row_scroll_does_not_echo(self):
         top = self.make_top()

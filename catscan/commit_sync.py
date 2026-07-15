@@ -78,7 +78,7 @@ class CommitSyncState(NamedTuple):
     expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
     chars_rel_to_start: int  # The number of characters right-of-center the referenced sync_index is
     mode: Literal["time", "transaction_row"] = "time"
-    transaction_row_align: Literal["top", "bottom"] | None = None
+    movement_alignment: Literal["before", "after"] | None = None
 
 
 @dataclass
@@ -99,20 +99,32 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
 
     def encode(self, obj: CommitSyncState | JsonValue) -> str:
         if isinstance(obj, CommitSyncState):
-            return super().encode(obj._asdict())
+            data = obj._asdict()
+            if obj.movement_alignment is not None:
+                data["transaction_row_align"] = {
+                    "before": "top",
+                    "after": "bottom",
+                }[obj.movement_alignment]
+            return super().encode(data)
         return super().encode(obj)
 
 
 class CommitSyncStateJSONDecoder(json.JSONDecoder):
     def decode(self, json_string: str) -> CommitSyncState:
         data = super().decode(json_string)
+        movement_alignment = data.get("movement_alignment")
+        if movement_alignment is None:
+            movement_alignment = {
+                "top": "before",
+                "bottom": "after",
+            }.get(data.get("transaction_row_align"))
         return CommitSyncState(
             sync_index=data["sync_index"],
             cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
             expand_rows=data["expand_rows"],
             chars_rel_to_start=data["chars_rel_to_start"],
             mode=data.get("mode", "time"),
-            transaction_row_align=data.get("transaction_row_align"),
+            movement_alignment=movement_alignment,
         )
 
 
@@ -145,8 +157,8 @@ class CommitSyncer:
         self.my = CommitSyncPeer(
             suffix=my_suffix,
             init_filename=os.path.abspath(f"{fifo_basename}.init.{my_suffix}"),
-            commit_index=commit_index if commit_index else {},
-            pushout_index=pushout_index if pushout_index else {},
+            commit_index=commit_index or {},
+            pushout_index=pushout_index or {},
             view_mode=view_mode,
             column_header_width=column_header_width,
         )
@@ -277,15 +289,6 @@ class CommitSyncer:
             except FileNotFoundError:
                 time.sleep(0.05)
         else:
-            return
-
-        if self.other.view_mode != self.my.view_mode:
-            self.failure_message = (
-                "Commit sync requires both catscan processes to use the same view mode "
-                f"(local: {self.my.view_mode}, remote: {self.other.view_mode})"
-            )
-            logging.info(self.failure_message)
-            self.stop()
             return
 
         # Signify that initialization is complete to any observers waiting on
@@ -469,7 +472,7 @@ class CommitSyncer:
             expand_rows=sync_state.expand_rows,
             chars_rel_to_start=rel_chars,
             mode=sync_state.mode,
-            transaction_row_align=sync_state.transaction_row_align,
+            movement_alignment=sync_state.movement_alignment,
         )
 
         if self.main_loop is None:

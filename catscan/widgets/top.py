@@ -1054,7 +1054,7 @@ class Top(urwid.widget.Widget):
     def _send_commit_sync_for_row(
         self,
         transaction_row_key: str | int | None = None,
-        transaction_row_align: Literal["top", "bottom"] | None = None,
+        movement_alignment: Literal["before", "after"] | None = None,
     ) -> None:
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
@@ -1065,7 +1065,7 @@ class Top(urwid.widget.Widget):
                 logging.info("Did not send transaction-row sync because no transaction row is visible or focused")
                 return
 
-            sync_signature = (transaction_row_key, transaction_row_align)
+            sync_signature = (transaction_row_key, movement_alignment)
             if sync_signature == self._last_transaction_sync_signature:
                 return
 
@@ -1081,7 +1081,7 @@ class Top(urwid.widget.Widget):
                             expand_rows=self.state.expand_rows,
                             chars_rel_to_start=0,
                             mode="transaction_row",
-                            transaction_row_align=transaction_row_align,
+                            movement_alignment=movement_alignment,
                         )
                     )
                     self._last_transaction_sync_signature = sync_signature
@@ -1135,6 +1135,17 @@ class Top(urwid.widget.Widget):
 
     def receive_commit_sync(self, sync_state: CommitSyncState) -> None:
         if sync_state.mode == "transaction_row":
+            if self.commit_sync_view_mode == DataView.RESOURCE:
+                if sync_state.sync_index not in self.commit_sync_index:
+                    logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
+                    return
+
+                self.update_state(
+                    self.state.copy_with(start_ps=self.commit_sync_index[sync_state.sync_index]),
+                    external_sync=True,
+                )
+                return
+
             transaction_row = self.commit_sync_index_to_transaction_row.get(sync_state.sync_index)
             if transaction_row is None:
                 logging.info(
@@ -1147,7 +1158,11 @@ class Top(urwid.widget.Widget):
 
             self._suppress_transaction_commit_sync = True
             try:
-                self._transaction_view.scroll_row_to_edge(transaction_row, sync_state.transaction_row_align or "top")
+                row_align = {
+                    "before": "top",
+                    "after": "bottom",
+                }[sync_state.movement_alignment or "before"]
+                self._transaction_view.scroll_row_to_edge(transaction_row, row_align)
             finally:
                 self._suppress_transaction_commit_sync = False
             return
@@ -1170,7 +1185,7 @@ class Top(urwid.widget.Widget):
             external_sync=True,
         )
 
-    def on_viewport_change(self, view: EventView, transaction_row_align: Literal["top", "bottom"] | None) -> None:
+    def on_viewport_change(self, view: EventView, movement_alignment: Literal["before", "after"] | None) -> None:
         if self.commit_sync_view_mode != DataView.TRANSACTIONS:
             return
 
@@ -1180,13 +1195,13 @@ class Top(urwid.widget.Widget):
         if self._suppress_transaction_commit_sync:
             return
 
-        self._send_commit_sync_for_row(transaction_row_align=transaction_row_align)
+        self._send_commit_sync_for_row(movement_alignment=movement_alignment)
 
     def on_focus_row_change(
         self,
         view: EventView,
         focused_row_key: str | int | None,
-        transaction_row_align: Literal["top", "bottom"] | None,
+        movement_alignment: Literal["before", "after"] | None,
     ) -> None:
         if self.commit_sync_view_mode != DataView.TRANSACTIONS:
             return
@@ -1197,7 +1212,7 @@ class Top(urwid.widget.Widget):
         if self._suppress_transaction_commit_sync:
             return
 
-        self._send_commit_sync_for_row(focused_row_key, transaction_row_align=transaction_row_align)
+        self._send_commit_sync_for_row(focused_row_key, movement_alignment=movement_alignment)
 
     def matching_rows(self, pattern: str) -> list[str]:
         row_pattern = glob_to_pattern(pattern)
