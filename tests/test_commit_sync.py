@@ -151,29 +151,29 @@ class TestCommitSync(unittest.TestCase):
         time.sleep(2)
         self.assertEqual(len(self.first_incoming_messages), 0)
 
-    def test_state_json_round_trip_supports_modes(self):
+    def test_state_json_round_trip_omits_mode_and_supports_optional_anchor(self):
         encoder = CommitSyncStateJSONEncoder()
         decoder = CommitSyncStateJSONDecoder()
 
-        for mode in ("time", "transaction_row"):
-            state = CommitSyncState(
-                sync_index=42,
-                cycles_per_char=Fraction(3, 2),
-                expand_rows=True,
-                chars_rel_to_start=-7,
-                mode=mode,
-                movement_alignment="after" if mode == "transaction_row" else None,
-            )
-            encoded = encoder.encode(state)
-            self.assertEqual(decoder.decode(encoder.encode(state)), state)
-            encoded_state = json.loads(encoded)
-            if mode == "transaction_row":
-                self.assertEqual(encoded_state["movement_alignment"], "after")
-                self.assertEqual(encoded_state["transaction_row_align"], "bottom")
-            else:
-                self.assertNotIn("transaction_row_align", encoded_state)
+        state = CommitSyncState(
+            sync_index=None,
+            cycles_per_char=Fraction(3, 2),
+            expand_rows=True,
+            chars_rel_to_start=None,
+            movement_alignment="after",
+        )
+        encoded = encoder.encode(state)
+        decoded = decoder.decode(encoded)
+        encoded_state = json.loads(encoded)
 
-    def test_state_json_decode_defaults_mode_to_time(self):
+        self.assertEqual(decoded, state)
+        self.assertNotIn("mode", encoded_state)
+        self.assertIsNone(encoded_state["sync_index"])
+        self.assertIsNone(encoded_state["chars_rel_to_start"])
+        self.assertEqual(encoded_state["movement_alignment"], "after")
+        self.assertEqual(encoded_state["transaction_row_align"], "bottom")
+
+    def test_state_json_decode_accepts_current_payload_without_mode(self):
         decoder = CommitSyncStateJSONDecoder()
 
         state = decoder.decode(
@@ -181,7 +181,7 @@ class TestCommitSync(unittest.TestCase):
             '"expand_rows": false, "chars_rel_to_start": 11}'
         )
 
-        self.assertEqual(state.mode, "time")
+        self.assertIsNone(state.mode)
         self.assertIsNone(state.movement_alignment)
         self.assertEqual(state.sync_index, 9)
         self.assertEqual(state.cycles_per_char, Fraction(5, 4))
@@ -219,13 +219,14 @@ class TestCommitSync(unittest.TestCase):
         syncer.outgoing = object()
         syncer.my.pushout_index = {10: 8, 11: 16}
         syncer.other.pushout_index = {10: 2, 11: 4}
+        syncer.other.view_mode = DataView.TRANSACTIONS
+        syncer.other.view_mode_from_handshake = True
 
         sync_state = CommitSyncState(
             sync_index=10,
             cycles_per_char=Fraction(1, 1),
             expand_rows=False,
             chars_rel_to_start=-9,
-            mode="transaction_row",
         )
         syncer.receive(sync_state)
 

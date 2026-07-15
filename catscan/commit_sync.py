@@ -73,11 +73,11 @@ class PushoutEvent(CatscanEvent):
 
 
 class CommitSyncState(NamedTuple):
-    sync_index: int  # The sync_index whose position we are syncing on
+    sync_index: int | None  # The sync_index whose position we are syncing on, if one is available
     cycles_per_char: Fraction  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
     expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
-    chars_rel_to_start: int  # The number of characters right-of-center the referenced sync_index is
-    mode: Literal["time", "transaction_row"] = "time"
+    chars_rel_to_start: int | None = None  # The number of characters right-of-center the referenced sync_index is
+    mode: Literal["time", "transaction_row"] | None = None
     movement_alignment: Literal["before", "after"] | None = None
 
 
@@ -88,6 +88,7 @@ class CommitSyncPeer:
     commit_index: dict[int, Event] = field(default_factory=dict)
     pushout_index: dict[int, Event] = field(default_factory=dict)
     view_mode: DataView = DataView.RESOURCE
+    view_mode_from_handshake: bool = False
     column_header_width: int = 0
 
 
@@ -100,6 +101,7 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
     def encode(self, obj: CommitSyncState | JsonValue) -> str:
         if isinstance(obj, CommitSyncState):
             data = obj._asdict()
+            del data["mode"]
             if obj.movement_alignment is not None:
                 data["transaction_row_align"] = {
                     "before": "top",
@@ -119,11 +121,11 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
                 "bottom": "after",
             }.get(data.get("transaction_row_align"))
         return CommitSyncState(
-            sync_index=data["sync_index"],
+            sync_index=data.get("sync_index"),
             cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
             expand_rows=data["expand_rows"],
-            chars_rel_to_start=data["chars_rel_to_start"],
-            mode=data.get("mode", "time"),
+            chars_rel_to_start=data.get("chars_rel_to_start"),
+            mode=data.get("mode"),
             movement_alignment=movement_alignment,
         )
 
@@ -284,7 +286,12 @@ class CommitSyncer:
                     self.other.pushout_index = {
                         int(sync_index): pushout for sync_index, pushout in from_json["pushout_index"].items()
                     }
-                    self.other.view_mode = DataView(from_json.get("view_mode", DataView.RESOURCE))
+                    if "view_mode" in from_json:
+                        self.other.view_mode = DataView(from_json["view_mode"])
+                        self.other.view_mode_from_handshake = True
+                    else:
+                        self.other.view_mode = DataView.RESOURCE
+                        self.other.view_mode_from_handshake = False
                 break
             except FileNotFoundError:
                 time.sleep(0.05)
@@ -428,7 +435,15 @@ class CommitSyncer:
             )
             return
 
-        if sync_state.mode == "transaction_row":
+        sender_view_mode = self.other.view_mode
+        if not self.other.view_mode_from_handshake and sync_state.mode == "transaction_row":
+            sender_view_mode = DataView.TRANSACTIONS
+
+        if (
+            sender_view_mode == DataView.TRANSACTIONS
+            or sync_state.sync_index is None
+            or sync_state.chars_rel_to_start is None
+        ):
             adjusted_sync_state = sync_state
             if self.main_loop is None:
                 self.sync_callback(adjusted_sync_state)

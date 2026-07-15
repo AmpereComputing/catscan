@@ -1061,62 +1061,101 @@ class Top(urwid.widget.Widget):
 
         if self.commit_sync_view_mode == DataView.TRANSACTIONS:
             transaction_row_key = transaction_row_key or self._transaction_view.focused_row_key()
-            if transaction_row_key is None:
-                logging.info("Did not send transaction-row sync because no transaction row is visible or focused")
-                return
-
-            sync_signature = (transaction_row_key, movement_alignment)
-            if sync_signature == self._last_transaction_sync_signature:
-                return
 
             other_sync_indexes = set(self.commit_syncer.other.commit_index) | set(
                 self.commit_syncer.other.pushout_index
             )
+            anchor_sync_index = None
             for anchor_sync_index in self.transaction_row_commit_candidates.get(transaction_row_key, []):
                 if anchor_sync_index in other_sync_indexes:
-                    self.commit_syncer.send(
-                        CommitSyncState(
-                            sync_index=anchor_sync_index,
-                            cycles_per_char=self.state.cycles_per_char,
-                            expand_rows=self.state.expand_rows,
-                            chars_rel_to_start=0,
-                            mode="transaction_row",
-                            movement_alignment=movement_alignment,
-                        )
-                    )
-                    self._last_transaction_sync_signature = sync_signature
-                    return
+                    break
+            else:
+                anchor_sync_index = None
 
-            logging.info(
-                "Did not send transaction-row sync because the selected transaction row had no shared commit anchor"
+            anchor_available = anchor_sync_index is not None
+            sync_signature = (
+                transaction_row_key,
+                movement_alignment,
+                self.state.cycles_per_char,
+                self.state.expand_rows,
+                anchor_available,
             )
+            if sync_signature == self._last_transaction_sync_signature:
+                return
+
+            previous_position_signature = None
+            if self._last_transaction_sync_signature is not None:
+                previous_position_signature = (
+                    self._last_transaction_sync_signature[0],
+                    self._last_transaction_sync_signature[1],
+                    self._last_transaction_sync_signature[4],
+                )
+            position_signature = (transaction_row_key, movement_alignment, anchor_available)
+            send_anchor = anchor_available and position_signature != previous_position_signature
+            self.commit_syncer.send(
+                CommitSyncState(
+                    sync_index=anchor_sync_index if send_anchor else None,
+                    cycles_per_char=self.state.cycles_per_char,
+                    expand_rows=self.state.expand_rows,
+                    chars_rel_to_start=0 if send_anchor else None,
+                    movement_alignment=movement_alignment,
+                )
+            )
+            self._last_transaction_sync_signature = sync_signature
             return
 
         if self.commit_sync_event not in self.stream_data.event_rows:
             logging.info("Did not send sync because instruction commit row didn't exist")
+            self.commit_syncer.send(
+                CommitSyncState(
+                    sync_index=None,
+                    cycles_per_char=self.state.cycles_per_char,
+                    expand_rows=self.state.expand_rows,
+                    chars_rel_to_start=None,
+                )
+            )
             return
 
         closest_instruction_commit = self.stream_data.event_rows[self.commit_sync_event].closest_to(self.state.start_ps)
         if not closest_instruction_commit:
             logging.info("Did not send sync because closest instruction not found to start_ps")
+            self.commit_syncer.send(
+                CommitSyncState(
+                    sync_index=None,
+                    cycles_per_char=self.state.cycles_per_char,
+                    expand_rows=self.state.expand_rows,
+                    chars_rel_to_start=None,
+                )
+            )
             return
 
         # If the commit we initially chose to synchronize on isn't present in
         # the other event stream, try a few subsequent commits in case we can
         # find one that is
-        other_pushout_index = self.commit_syncer.other.pushout_index
+        other_sync_indexes = set(self.commit_syncer.other.commit_index) | set(self.commit_syncer.other.pushout_index)
         closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
-        if closest_sync_index not in other_pushout_index or closest_sync_index not in self.pushout_index:
+        if closest_sync_index not in other_sync_indexes:
             for _ in range(20):
                 if next_commit := self.stream_data.event_rows[self.commit_sync_event].oldest_younger(
                     closest_instruction_commit
                 ):
                     closest_instruction_commit = next_commit
                     closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
-                    if closest_sync_index in other_pushout_index and closest_sync_index in self.pushout_index:
+                    if closest_sync_index in other_sync_indexes:
                         break
                 else:
                     break
+
+        if closest_sync_index not in other_sync_indexes:
+            self.commit_syncer.send(
+                CommitSyncState(
+                    sync_index=None,
+                    cycles_per_char=self.state.cycles_per_char,
+                    expand_rows=self.state.expand_rows,
+                    chars_rel_to_start=None,
+                )
+            )
+            return
 
         offset_chars = round(
             (self.state.start_ps - closest_instruction_commit.time)
@@ -1129,24 +1168,88 @@ class Top(urwid.widget.Widget):
             cycles_per_char=self.state.cycles_per_char,
             expand_rows=self.state.expand_rows,
             chars_rel_to_start=offset_chars,
-            mode="time",
         )
         self.commit_syncer.send(sync_state)
 
-    def receive_commit_sync(self, sync_state: CommitSyncState) -> None:
+    def _commit_sync_sender_view_mode(self, sync_state: CommitSyncState) -> DataView:
+        if self.commit_syncer:
+            peer = self.commit_syncer.other
+            if getattr(peer, "view_mode_from_handshake", False):
+                return peer.view_mode
+            if sync_state.mode == "transaction_row":
+                return DataView.TRANSACTIONS
+            return getattr(peer, "view_mode", DataView.RESOURCE)
         if sync_state.mode == "transaction_row":
+            return DataView.TRANSACTIONS
+        return DataView.RESOURCE
+
+    def _transaction_view_position(self) -> tuple[str | int | None, str | int | None]:
+        if self.commit_sync_view_mode != DataView.TRANSACTIONS:
+            return None, None
+        return self._transaction_view.top_visible_row_key(), self._transaction_view.focused_row_key()
+
+    def _restore_transaction_view_position(self, position: tuple[str | int | None, str | int | None]) -> None:
+        top_row_key, focused_row_key = position
+        if self.commit_sync_view_mode != DataView.TRANSACTIONS or (top_row_key is None and focused_row_key is None):
+            return
+
+        self._suppress_transaction_commit_sync = True
+        try:
+            top_position = None
+            if top_row_key is not None:
+                top_position = self._transaction_view._event_row_position(top_row_key)
+                if top_position is not None:
+                    self._transaction_view.list_box.set_focus(top_position)
+                    self._transaction_view.list_box.set_focus_valign("top")
+
+            if focused_row_key is not None and focused_row_key != top_row_key:
+                focused_position = self._transaction_view._event_row_position(focused_row_key)
+                if focused_position is not None:
+                    coming_from = "above" if top_position is None or focused_position >= top_position else "below"
+                    self._transaction_view.list_box.set_focus(focused_position, coming_from)
+
+            self._transaction_view._emit_position_change_notifications(force=True)
+            self._transaction_view._invalidate()
+        finally:
+            self._suppress_transaction_commit_sync = False
+
+    def _apply_commit_sync_display_state(
+        self,
+        sync_state: CommitSyncState,
+        *,
+        start_ps: int | None = None,
+        preserve_transaction_position: bool = False,
+    ) -> None:
+        transaction_position = self._transaction_view_position() if preserve_transaction_position else None
+        state_values = {
+            "cycles_per_char": sync_state.cycles_per_char,
+            "expand_rows": sync_state.expand_rows,
+        }
+        if start_ps is not None:
+            state_values["start_ps"] = start_ps
+
+        self.update_state(self.state.copy_with(**state_values), external_sync=True)
+
+        if transaction_position is not None:
+            self._restore_transaction_view_position(transaction_position)
+
+    def receive_commit_sync(self, sync_state: CommitSyncState) -> None:
+        sender_view_mode = self._commit_sync_sender_view_mode(sync_state)
+
+        if sync_state.sync_index is None:
+            self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
+            return
+
+        if sender_view_mode == DataView.TRANSACTIONS:
             if self.commit_sync_view_mode == DataView.RESOURCE:
                 if sync_state.sync_index not in self.commit_sync_index:
                     logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
+                    self._apply_commit_sync_display_state(sync_state)
                     return
 
-                self.update_state(
-                    self.state.copy_with(
-                        cycles_per_char=sync_state.cycles_per_char,
-                        expand_rows=sync_state.expand_rows,
-                        start_ps=self.commit_sync_index[sync_state.sync_index],
-                    ),
-                    external_sync=True,
+                self._apply_commit_sync_display_state(
+                    sync_state,
+                    start_ps=self.commit_sync_index[sync_state.sync_index],
                 )
                 return
 
@@ -1155,15 +1258,10 @@ class Top(urwid.widget.Widget):
                 logging.info(
                     f"Received transaction-row sync_index not in transaction-row index: {sync_state.sync_index}"
                 )
+                self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
                 return
 
-            self.update_state(
-                self.state.copy_with(
-                    cycles_per_char=sync_state.cycles_per_char,
-                    expand_rows=sync_state.expand_rows,
-                ),
-                external_sync=True,
-            )
+            self._apply_commit_sync_display_state(sync_state)
             if self._transaction_view.is_row_visible(transaction_row):
                 return
 
@@ -1180,26 +1278,26 @@ class Top(urwid.widget.Widget):
 
         if sync_state.sync_index not in self.commit_sync_index:
             logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
+            self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
             return
 
         if self.commit_sync_view_mode == DataView.TRANSACTIONS:
             transaction_row = self.commit_sync_index_to_transaction_row.get(sync_state.sync_index)
             if transaction_row is None:
                 logging.info(f"Received time sync_index not in transaction-row index: {sync_state.sync_index}")
+                self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
                 return
 
-            self.update_state(
-                self.state.copy_with(
-                    cycles_per_char=sync_state.cycles_per_char,
-                    expand_rows=sync_state.expand_rows,
-                ),
-                external_sync=True,
-            )
+            self._apply_commit_sync_display_state(sync_state)
             self._suppress_transaction_commit_sync = True
             try:
                 self._transaction_view.scroll_row_to_top(transaction_row)
             finally:
                 self._suppress_transaction_commit_sync = False
+            return
+
+        if sync_state.chars_rel_to_start is None:
+            self._apply_commit_sync_display_state(sync_state)
             return
 
         # Calculate the time at the left-hand side of the screen based on our
@@ -1209,12 +1307,7 @@ class Top(urwid.widget.Widget):
             sync_index_commit_ps + sync_state.chars_rel_to_start * sync_state.cycles_per_char * self.state.ps_per_cycle
         )
 
-        self.update_state(
-            self.state.copy_with(
-                cycles_per_char=sync_state.cycles_per_char, expand_rows=sync_state.expand_rows, start_ps=new_start_ps
-            ),
-            external_sync=True,
-        )
+        self._apply_commit_sync_display_state(sync_state, start_ps=new_start_ps)
 
     def on_viewport_change(self, view: EventView, movement_alignment: Literal["before", "after"] | None) -> None:
         if self.commit_sync_view_mode != DataView.TRANSACTIONS:
