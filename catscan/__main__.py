@@ -129,7 +129,7 @@ def parse_args() -> argparse.Namespace:
         dest="sort_keys",
         action="store_false",
         default=True,
-        help="Disable sorting of keys in JSON output",
+        help="Disable sorting of (data value list) keys in event view",
     )
     parser.add_argument(
         "--post-to-tx",
