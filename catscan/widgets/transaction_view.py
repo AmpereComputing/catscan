@@ -60,8 +60,7 @@ class TransactionView(EventView):
         return 3
 
     def _update_selected_row_name(self, newly_selected_row: int) -> None:
-        for i, row_name in enumerate(self.stream_data.transaction_event_rows.keys()):
-            if newly_selected_row == row_name:
-                self.list_walker.set_focus(i)
-                self._emit_position_change_notifications()
-                return
+        row_position = self.event_row_position(newly_selected_row)
+        if row_position is not None:
+            self.list_walker.set_focus(row_position)
+            self._emit_position_change_notifications()

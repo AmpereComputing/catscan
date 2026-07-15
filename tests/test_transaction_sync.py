@@ -46,7 +46,6 @@ class DummyCommitSyncer:
             pushout_index=other_pushout_index or {},
             column_header_width=0,
             view_mode=other_view_mode,
-            view_mode_from_handshake=True,
         )
         self.sent = []
         self.failure_message = None
@@ -357,7 +356,6 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
         self.assertEqual(top.commit_syncer.sent[0].sync_index, 20)
-        self.assertIsNone(top.commit_syncer.sent[0].mode)
 
     def test_selecting_visible_non_top_row_sends_focused_row_anchor(self):
         top = self.make_top(size=(120, 8))
@@ -641,7 +639,6 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         sender.send_commit_sync()
 
         self.assertEqual(len(sender.commit_syncer.sent), 1)
-        self.assertIsNone(sender.commit_syncer.sent[0].mode)
         receiver.receive_commit_sync(sender.commit_syncer.sent[0])
         self.assertEqual(receiver._transaction_view.top_visible_row_key(), self.txids[3])
         self.assertEqual(receiver.state.cycles_per_char, sender.state.cycles_per_char)

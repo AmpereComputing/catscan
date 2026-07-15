@@ -74,6 +74,15 @@ class ResourceView(EventView):
     def create_group_row(self, group: str, row_index: int, **kwargs: Any) -> GroupRow:
         return GroupRow(group, self.state, row_index, **kwargs)
 
+    def _build_event_row_positions(self) -> dict[str | int, int]:
+        groups_seen = set()
+        row_positions = {}
+        for row_index, row in enumerate(self.iter_event_rows()):
+            if self._include_groups and row.group not in groups_seen:
+                groups_seen.add(row.group)
+            row_positions[row.key()] = row_index + len(groups_seen)
+        return row_positions
+
     def add_rows(self):
         groups_seen = set()
         for row_index, row in enumerate(self.iter_event_rows()):
@@ -99,14 +108,10 @@ class ResourceView(EventView):
         return 1
 
     def _update_selected_row_name(self, newly_selected_row: str) -> None:
-        groups_seen = set()
-        for row_index, row in enumerate(self.stream_data):
-            if self._include_groups and row.group not in groups_seen:
-                groups_seen.add(row.group)
-            if newly_selected_row == row.name:
-                self.list_walker.set_focus(row_index + len(groups_seen))
-                self._emit_position_change_notifications()
-                return
+        row_position = self.event_row_position(newly_selected_row)
+        if row_position is not None:
+            self.list_walker.set_focus(row_position)
+            self._emit_position_change_notifications()
 
 
 class SubsetResourceView(ResourceView):
@@ -174,11 +179,10 @@ class SubsetResourceView(ResourceView):
         return self._max_rows
 
     def _update_selected_row_name(self, newly_selected_row: str) -> None:
-        for i, row_name in enumerate(self.events):
-            if newly_selected_row == row_name:
-                self.list_walker.set_focus(i)
-                self._emit_position_change_notifications()
-                return
+        row_position = self.event_row_position(newly_selected_row)
+        if row_position is not None:
+            self.list_walker.set_focus(row_position)
+            self._emit_position_change_notifications()
 
     def rows(self, size: tuple[int], focus: bool = False) -> int:
         if not self.events:

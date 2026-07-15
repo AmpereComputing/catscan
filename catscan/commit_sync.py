@@ -77,7 +77,6 @@ class CommitSyncState(NamedTuple):
     cycles_per_char: Fraction  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
     expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
     chars_rel_to_start: int | None = None  # The number of characters right-of-center the referenced sync_index is
-    mode: Literal["time", "transaction_row"] | None = None
     movement_alignment: Literal["before", "after"] | None = None
 
 
@@ -85,10 +84,9 @@ class CommitSyncState(NamedTuple):
 class CommitSyncPeer:
     suffix: str
     init_filename: str
-    commit_index: dict[int, Event] = field(default_factory=dict)
-    pushout_index: dict[int, Event] = field(default_factory=dict)
+    commit_index: dict[int, int] = field(default_factory=dict)
+    pushout_index: dict[int, int] = field(default_factory=dict)
     view_mode: DataView = DataView.RESOURCE
-    view_mode_from_handshake: bool = False
     column_header_width: int = 0
 
 
@@ -101,7 +99,6 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
     def encode(self, obj: CommitSyncState | JsonValue) -> str:
         if isinstance(obj, CommitSyncState):
             data = obj._asdict()
-            del data["mode"]
             if obj.movement_alignment is not None:
                 data["transaction_row_align"] = {
                     "before": "top",
@@ -125,7 +122,6 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
             cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
             expand_rows=data["expand_rows"],
             chars_rel_to_start=data.get("chars_rel_to_start"),
-            mode=data.get("mode"),
             movement_alignment=movement_alignment,
         )
 
@@ -288,10 +284,8 @@ class CommitSyncer:
                     }
                     if "view_mode" in from_json:
                         self.other.view_mode = DataView(from_json["view_mode"])
-                        self.other.view_mode_from_handshake = True
                     else:
                         self.other.view_mode = DataView.RESOURCE
-                        self.other.view_mode_from_handshake = False
                 break
             except FileNotFoundError:
                 time.sleep(0.05)
@@ -435,12 +429,8 @@ class CommitSyncer:
             )
             return
 
-        sender_view_mode = self.other.view_mode
-        if not self.other.view_mode_from_handshake and sync_state.mode == "transaction_row":
-            sender_view_mode = DataView.TRANSACTIONS
-
         if (
-            sender_view_mode == DataView.TRANSACTIONS
+            self.other.view_mode == DataView.TRANSACTIONS
             or sync_state.sync_index is None
             or sync_state.chars_rel_to_start is None
         ):
@@ -486,7 +476,6 @@ class CommitSyncer:
             cycles_per_char=sync_state.cycles_per_char,
             expand_rows=sync_state.expand_rows,
             chars_rel_to_start=rel_chars,
-            mode=sync_state.mode,
             movement_alignment=sync_state.movement_alignment,
         )
 
