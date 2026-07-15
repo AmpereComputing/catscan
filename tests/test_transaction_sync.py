@@ -454,36 +454,38 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(top._transaction_view.focused_row()[1], self.txids[3])
         self.assertEqual(top._transaction_view.visible_row_keys()[-1], self.txids[3])
 
-    def test_inbound_transaction_row_sync_leaves_horizontal_state_unchanged(self):
+    def test_inbound_transaction_row_sync_applies_display_state_without_panning(self):
         top = self.make_top()
         requested_state = top.state.copy_with(start_ps=1230, cycles_per_char=Fraction(4, 1), expand_rows=True)
         top.update_state(requested_state)
         initial_state = top.state
+        sync_cycles_per_char = Fraction(1, 8)
+        sync_expand_rows = False
 
         top.receive_commit_sync(
             CommitSyncState(
                 sync_index=50,
-                cycles_per_char=Fraction(1, 8),
-                expand_rows=False,
+                cycles_per_char=sync_cycles_per_char,
+                expand_rows=sync_expand_rows,
                 chars_rel_to_start=17,
                 mode="transaction_row",
             )
         )
 
         self.assertEqual(top.state.start_ps, initial_state.start_ps)
-        self.assertEqual(top.state.cycles_per_char, initial_state.cycles_per_char)
-        self.assertEqual(top.state.expand_rows, initial_state.expand_rows)
+        self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
+        self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
     def test_resource_view_receives_transaction_row_sync_as_commit_time(self):
         top = self.make_top(view=DataView.RESOURCE)
-        initial_cycles_per_char = top.state.cycles_per_char
-        initial_expand_rows = top.state.expand_rows
+        sync_cycles_per_char = Fraction(1, 8)
+        sync_expand_rows = not top.state.expand_rows
 
         top.receive_commit_sync(
             CommitSyncState(
                 sync_index=40,
-                cycles_per_char=Fraction(1, 8),
-                expand_rows=not initial_expand_rows,
+                cycles_per_char=sync_cycles_per_char,
+                expand_rows=sync_expand_rows,
                 chars_rel_to_start=17,
                 mode="transaction_row",
                 movement_alignment="after",
@@ -491,43 +493,49 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         )
 
         self.assertEqual(top.state.start_ps, 100)
-        self.assertEqual(top.state.cycles_per_char, initial_cycles_per_char)
-        self.assertEqual(top.state.expand_rows, initial_expand_rows)
+        self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
+        self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
     def test_transaction_view_receives_resource_time_sync_as_row_scroll(self):
         top = self.make_top()
+        sync_cycles_per_char = Fraction(1, 8)
+        sync_expand_rows = True
 
         top.receive_commit_sync(
             CommitSyncState(
                 sync_index=40,
-                cycles_per_char=Fraction(1, 8),
-                expand_rows=True,
+                cycles_per_char=sync_cycles_per_char,
+                expand_rows=sync_expand_rows,
                 chars_rel_to_start=17,
                 mode="time",
             )
         )
 
         self.assertEqual(top._transaction_view.top_visible_row_key(), self.txids[3])
+        self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
+        self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
-    def test_resource_time_sync_leaves_transaction_horizontal_state_unchanged(self):
+    def test_resource_time_sync_applies_display_state_without_panning(self):
         top = self.make_top()
         requested_state = top.state.copy_with(start_ps=1230, cycles_per_char=Fraction(4, 1), expand_rows=True)
         top.update_state(requested_state)
         initial_state = top.state
+        sync_cycles_per_char = Fraction(1, 8)
+        sync_expand_rows = False
 
         top.receive_commit_sync(
             CommitSyncState(
                 sync_index=50,
-                cycles_per_char=Fraction(1, 8),
-                expand_rows=False,
+                cycles_per_char=sync_cycles_per_char,
+                expand_rows=sync_expand_rows,
                 chars_rel_to_start=17,
                 mode="time",
             )
         )
 
         self.assertEqual(top.state.start_ps, initial_state.start_ps)
-        self.assertEqual(top.state.cycles_per_char, initial_state.cycles_per_char)
-        self.assertEqual(top.state.expand_rows, initial_state.expand_rows)
+        self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
+        self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
     def test_missing_resource_time_sync_index_does_not_scroll_transaction_view(self):
         top = self.make_top()
@@ -548,14 +556,16 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(top._transaction_view.top_visible_row_key(), initial_top)
 
     def test_remote_resource_time_scroll_does_not_echo_transaction_sync(self):
-        top = self.make_top()
+        top = self.make_top(size=(120, 2))
         top.commit_syncer = DummyCommitSyncer(other_commit_index={40: 100})
+        sync_cycles_per_char = Fraction(1, 8)
+        sync_expand_rows = True
 
         top.receive_commit_sync(
             CommitSyncState(
                 sync_index=40,
-                cycles_per_char=Fraction(1, 8),
-                expand_rows=True,
+                cycles_per_char=sync_cycles_per_char,
+                expand_rows=sync_expand_rows,
                 chars_rel_to_start=17,
                 mode="time",
             )
@@ -563,11 +573,13 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         self.assertEqual(top.commit_syncer.sent, [])
         self.assertFalse(top._suppress_transaction_commit_sync)
+        self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
+        self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
     def test_resource_sender_time_sync_scrolls_transaction_receiver(self):
         sender = self.make_top(view=DataView.RESOURCE)
         receiver = self.make_top()
-        sender.update_state(sender.state.copy_with(start_ps=100))
+        sender.update_state(sender.state.copy_with(start_ps=100, cycles_per_char=Fraction(1, 8), expand_rows=True))
         sender.commit_syncer = DummyCommitSyncer(other_pushout_index=receiver.pushout_index)
 
         sender.send_commit_sync()
@@ -576,16 +588,20 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(sender.commit_syncer.sent[0].mode, "time")
         receiver.receive_commit_sync(sender.commit_syncer.sent[0])
         self.assertEqual(receiver._transaction_view.top_visible_row_key(), self.txids[3])
+        self.assertEqual(receiver.state.cycles_per_char, sender.state.cycles_per_char)
+        self.assertEqual(receiver.state.expand_rows, sender.state.expand_rows)
 
     def test_remote_transaction_row_scroll_does_not_echo(self):
-        top = self.make_top()
+        top = self.make_top(size=(120, 2))
         top.commit_syncer = DummyCommitSyncer(other_commit_index={40: 100})
+        sync_cycles_per_char = Fraction(1, 8)
+        sync_expand_rows = True
 
         top.receive_commit_sync(
             CommitSyncState(
                 sync_index=40,
-                cycles_per_char=Fraction(1, 1),
-                expand_rows=False,
+                cycles_per_char=sync_cycles_per_char,
+                expand_rows=sync_expand_rows,
                 chars_rel_to_start=0,
                 mode="transaction_row",
             )
@@ -593,10 +609,13 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         self.assertEqual(top.commit_syncer.sent, [])
         self.assertFalse(top._suppress_transaction_commit_sync)
+        self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
+        self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
     def test_different_window_sizes_focus_same_selected_row(self):
         sender = self.make_top(size=(120, 5))
         receiver = self.make_top(size=(120, 2))
+        sender.update_state(sender.state.copy_with(cycles_per_char=Fraction(1, 8), expand_rows=True))
 
         sender.commit_syncer = DummyCommitSyncer(other_commit_index=receiver.commit_sync_index)
         sender.make_selection(Selection(self.txids[3], view=sender._transaction_view.name))
@@ -606,6 +625,8 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         self.assertEqual(receiver._transaction_view.focused_row()[1], self.txids[3])
         self.assertEqual(receiver._transaction_view.top_visible_row_key(), self.txids[3])
+        self.assertEqual(receiver.state.cycles_per_char, sender.state.cycles_per_char)
+        self.assertEqual(receiver.state.expand_rows, sender.state.expand_rows)
 
     def test_inbound_visible_transaction_row_does_not_refocus(self):
         top = self.make_top(size=(120, 8))

@@ -1141,7 +1141,11 @@ class Top(urwid.widget.Widget):
                     return
 
                 self.update_state(
-                    self.state.copy_with(start_ps=self.commit_sync_index[sync_state.sync_index]),
+                    self.state.copy_with(
+                        cycles_per_char=sync_state.cycles_per_char,
+                        expand_rows=sync_state.expand_rows,
+                        start_ps=self.commit_sync_index[sync_state.sync_index],
+                    ),
                     external_sync=True,
                 )
                 return
@@ -1153,6 +1157,13 @@ class Top(urwid.widget.Widget):
                 )
                 return
 
+            self.update_state(
+                self.state.copy_with(
+                    cycles_per_char=sync_state.cycles_per_char,
+                    expand_rows=sync_state.expand_rows,
+                ),
+                external_sync=True,
+            )
             if self._transaction_view.is_row_visible(transaction_row):
                 return
 
@@ -1177,6 +1188,13 @@ class Top(urwid.widget.Widget):
                 logging.info(f"Received time sync_index not in transaction-row index: {sync_state.sync_index}")
                 return
 
+            self.update_state(
+                self.state.copy_with(
+                    cycles_per_char=sync_state.cycles_per_char,
+                    expand_rows=sync_state.expand_rows,
+                ),
+                external_sync=True,
+            )
             self._suppress_transaction_commit_sync = True
             try:
                 self._transaction_view.scroll_row_to_top(transaction_row)
