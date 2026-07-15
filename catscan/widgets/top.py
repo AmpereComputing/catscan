@@ -456,11 +456,12 @@ class Top(urwid.widget.Widget):
     ) -> None:
         self.stream_data = stream_data
 
+        ps_per_cycle = stream_data.period if self._infer_period else self.state.ps_per_cycle
         if self.commit_sync_event in self.stream_data.event_rows:
             self.commit_sync_index = build_commit_index(
                 self.stream_data.event_rows[self.commit_sync_event], self.commit_sync_data_name
             )
-            self.pushout_index = build_pushout_index(self.commit_sync_index, self.state.ps_per_cycle)
+            self.pushout_index = build_pushout_index(self.commit_sync_index, ps_per_cycle)
         else:
             self.commit_sync_index = {}
             self.pushout_index = {}
@@ -475,7 +476,7 @@ class Top(urwid.widget.Widget):
             column_header_width=max_column_width,
             start_row=1,
             selection=Selection(),
-            ps_per_cycle=stream_data.period if self._infer_period else self.state.ps_per_cycle,
+            ps_per_cycle=ps_per_cycle,
         )
 
         self.update_state(new_state)
@@ -1005,8 +1006,9 @@ class Top(urwid.widget.Widget):
     def stop_commit_sync(self) -> None:
         # Restore the copy of the event stream data that we took prior to
         # starting instruction sync
-        self.update_stream_data(self.saved_stream_data, zoom_to_extents=False)
-        del self.saved_stream_data
+        if hasattr(self, "saved_stream_data"):
+            self.update_stream_data(self.saved_stream_data, zoom_to_extents=False)
+            del self.saved_stream_data
 
         # Force redrawing the screen since we're updating the state outside
         # of urwid's normal event loop

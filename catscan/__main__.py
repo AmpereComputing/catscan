@@ -7,6 +7,7 @@ import argparse
 import asyncio
 import logging
 import os
+import runpy
 import warnings
 
 import urwid
@@ -16,6 +17,7 @@ from catscan.argument_parser import ArgumentParser
 from catscan.colors import palette
 from catscan.events import trace_events
 from catscan.events.mapping import (
+    DynamicAbbreviation,
     Mapper,
     disassembly_architectures,
     value_map_abbreviation_spec,
@@ -44,6 +46,24 @@ def static_abbreviation_spec(arg: str) -> tuple[str, str]:
     if not event or not abbrev:
         raise argparse.ArgumentTypeError("Static abbreviation must be <event>=<abbrev>")
     return event, abbrev
+
+
+def load_mapping_file_abbreviations(mapping_files: list[str]) -> list[DynamicAbbreviation]:
+    abbreviations: list[DynamicAbbreviation] = []
+
+    for mapping_file in mapping_files:
+
+        def add_abbreviation(abbreviation: object, *, mapping_file: str = mapping_file) -> None:
+            if not isinstance(abbreviation, DynamicAbbreviation):
+                raise TypeError(
+                    f"{mapping_file}: add_abbreviation() expected DynamicAbbreviation, "
+                    f"got {type(abbreviation).__name__}"
+                )
+            abbreviations.append(abbreviation)
+
+        runpy.run_path(mapping_file, init_globals={"add_abbreviation": add_abbreviation})
+
+    return abbreviations
 
 
 def parse_args() -> argparse.Namespace:
@@ -192,6 +212,13 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--mapping-file",
+        action="append",
+        default=[],
+        metavar="PATH",
+        help="Load a Python mapping file which can call add_abbreviation(DynamicAbbreviation)",
+    )
+    parser.add_argument(
         "--instruction-commit-event",
         help="The name of the event corresponding to instruction commit",
     )
@@ -247,12 +274,15 @@ def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> T
     loop.screen.reset_default_terminal_palette()
     loop.screen.focus_reporting = True
 
+    dynamic_abbreviations = (
+        args.value_string_abbrev + args.value_map_abbrev + load_mapping_file_abbreviations(args.mapping_file)
+    )
     mapper = Mapper(
         event_groups=args.event_group,
         hex_args=[],
         inst_args=args.instruction,
         static_abbreviations=args.static_abbreviations,
-        dynamic_abbreviations=args.value_string_abbrev + args.value_map_abbrev,
+        dynamic_abbreviations=dynamic_abbreviations,
         instruction_arch=args.instruction_arch,
     )
     event_filters = []

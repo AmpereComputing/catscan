@@ -5,14 +5,16 @@ import os
 import unittest
 from functools import partial
 from io import BufferedReader, TextIOWrapper
-from tempfile import NamedTemporaryFile, TemporaryFile
+from pathlib import Path
+from tempfile import NamedTemporaryFile, TemporaryDirectory, TemporaryFile
 
 import urwid
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
-from catscan.__main__ import setup
+from catscan.__main__ import load_mapping_file_abbreviations, setup
 from catscan.events import trace_events
+from catscan.events.mapping import ValueStringAbbreviation
 
 TOTAL_EVENTS = 20
 PS_PER_CYCLE = 100
@@ -66,6 +68,71 @@ class TestingScreen(urwid.display.raw.Screen):
     def __del__(self):
         self.input_r.close()
         self.input_w.close()
+
+
+class TestMappingFileAbbreviations(unittest.TestCase):
+    def write_mapping_file(self, directory: str, filename: str, text: str) -> str:
+        path = Path(directory) / filename
+        path.write_text(text, encoding="utf-8")
+        return str(path)
+
+    def test_loads_dynamic_abbreviation_from_mapping_file(self):
+        with TemporaryDirectory() as directory:
+            mapping_file = self.write_mapping_file(
+                directory,
+                "mapping.py",
+                """
+from catscan.events.mapping import ValueStringAbbreviation
+
+add_abbreviation(ValueStringAbbreviation(["event_.*"], value_suffix="status"))
+""",
+            )
+
+            abbreviations = load_mapping_file_abbreviations([mapping_file])
+
+        self.assertEqual(1, len(abbreviations))
+        self.assertIsInstance(abbreviations[0], ValueStringAbbreviation)
+        self.assertEqual("status", abbreviations[0].value_suffix)
+
+    def test_rejects_non_dynamic_abbreviation_from_mapping_file(self):
+        with TemporaryDirectory() as directory:
+            mapping_file = self.write_mapping_file(
+                directory,
+                "mapping.py",
+                """
+add_abbreviation("invalid")
+""",
+            )
+
+            with self.assertRaisesRegex(TypeError, "expected DynamicAbbreviation, got str"):
+                load_mapping_file_abbreviations([mapping_file])
+
+    def test_loads_multiple_mapping_files_in_order(self):
+        with TemporaryDirectory() as directory:
+            first_mapping_file = self.write_mapping_file(
+                directory,
+                "first_mapping.py",
+                """
+from catscan.events.mapping import ValueStringAbbreviation
+
+add_abbreviation(ValueStringAbbreviation(["first"], value_suffix="first_suffix"))
+""",
+            )
+            second_mapping_file = self.write_mapping_file(
+                directory,
+                "second_mapping.py",
+                """
+from catscan.events.mapping import ValueStringAbbreviation
+
+add_abbreviation(ValueStringAbbreviation(["second"], value_suffix="second_suffix"))
+""",
+            )
+
+            abbreviations = load_mapping_file_abbreviations([first_mapping_file, second_mapping_file])
+
+        self.assertEqual(
+            ["first_suffix", "second_suffix"], [abbreviation.value_suffix for abbreviation in abbreviations]
+        )
 
 
 class TestMain(CatscanDataTest):

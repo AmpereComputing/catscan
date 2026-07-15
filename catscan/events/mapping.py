@@ -107,6 +107,9 @@ class DynamicAbbreviation(ABC):
         self.patterns = [re.compile(pattern) for pattern in patterns]
         self.exclude_patterns = [re.compile(pattern) for pattern in exclude_patterns] if exclude_patterns else []
 
+    def setup(self, mapper: "Mapper") -> None:
+        """Sets up any info from mapper for generation (e.g. disassembler)."""
+
     def value_with_suffix(self, event: Event, suffix: str) -> str | None:
         for name, value in event.data.items():
             if name.endswith(suffix):
@@ -207,8 +210,10 @@ class ValueMapAbbreviation(DynamicAbbreviation):
 
 class CallableAbbreviation(DynamicAbbreviation):
     def __init__(
-        self, patterns: list[str], generate: Callable[[object, Event], str | None], exclude: list[str] | None = None
+            self, patterns: list[str], generate: Callable[[object, Event], str | None], setup: Callable[[object, "Mapper"], None] | None = None, exclude: list[str] | None = None
     ):
+        if setup is not None:
+            self.setup = MethodType(setup, self)
         self.generate = MethodType(generate, self)
         super().__init__(patterns, exclude)
 
@@ -247,6 +252,9 @@ class Mapper:
 
         disasm_arch, disasm_mode = disassembly_architectures[instruction_arch]
         self.disassembler = capstone.Cs(disasm_arch, disasm_mode)
+
+        for abbreviation in self.dynamic_abbreviations:
+            abbreviation.setup(self)
 
     def process(self, name: str, *, default_group: str | None = None) -> tuple[str, str]:
         default_group = default_group or "Events"
