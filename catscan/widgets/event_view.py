@@ -432,7 +432,6 @@ class EventView(urwid.WidgetWrap, View):
         self._last_top_visible_row_key = None
         self._last_top_visible_position = None
         self._last_focused_row_key = None
-        self._last_vertical_direction = None
         self._event_row_positions: dict[str | int, int] = {}
 
         View.__init__(self, name, state, stream_data)
@@ -532,7 +531,6 @@ class EventView(urwid.WidgetWrap, View):
         self._last_top_visible_row_key = None
         self._last_top_visible_position = None
         self._last_focused_row_key = None
-        self._last_vertical_direction = None
         self._invalidate()
 
     def update_stream_data(self, stream_data: EventStreamData) -> None:
@@ -576,9 +574,6 @@ class EventView(urwid.WidgetWrap, View):
         if isinstance(rowwidget, EventRow):
             return rowwidget.ed.start_time, rowwidget.ed.end_time
         return 0, 0
-
-    def last_vertical_direction(self) -> Literal["up", "down"] | None:
-        return self._last_vertical_direction
 
     def _emit_position_change_notifications(self, force: bool = False) -> None:
         top_position = self._visible_top_position()
@@ -657,8 +652,7 @@ class EventView(urwid.WidgetWrap, View):
             and self._last_top_visible_position is not None
             and top_position != self._last_top_visible_position
         ):
-            self._last_vertical_direction = "down" if top_position > self._last_top_visible_position else "up"
-            return "after" if self._last_vertical_direction == "down" else "before"
+            return "after" if top_position > self._last_top_visible_position else "before"
         return None
 
     def _top_visible_row_key_at_position(self, top_position: int | None) -> str | int | None:

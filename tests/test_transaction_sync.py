@@ -286,17 +286,6 @@ class TestEventViewViewport(TransactionSyncDataTest):
         self.assertEqual(view.focused_row()[1], self.txids[3])
         self.assertEqual(view.visible_row_keys()[-1], self.txids[3])
 
-    def test_vertical_direction_tracks_navigation(self):
-        view, _events = self.make_view()
-        size = (80, 1)
-        view.render(size, focus=True)
-
-        view.keypress(size, "down")
-        self.assertEqual(view.last_vertical_direction(), "down")
-
-        view.keypress(size, "up")
-        self.assertEqual(view.last_vertical_direction(), "up")
-
     def test_focus_row_change_receives_movement_alignment(self):
         alignments = []
         view, _events = self.make_view(
