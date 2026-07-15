@@ -670,10 +670,15 @@ class EventView(urwid.WidgetWrap, View):
 
     def _emit_viewport_change_if_needed(
         self,
-        top_position: int | None,
-        movement_alignment: Literal["before", "after"] | None,
+        top_position: int | None = None,
+        movement_alignment: Literal["before", "after"] | None = None,
         force: bool = False,
     ) -> None:
+        if top_position is None:
+            top_position = self._visible_top_position()
+        if movement_alignment is None:
+            movement_alignment = self._movement_alignment(top_position)
+
         top_row_key = self._top_visible_row_key_at_position(top_position)
         if force or top_row_key != self._last_top_visible_row_key:
             self._last_top_visible_row_key = top_row_key

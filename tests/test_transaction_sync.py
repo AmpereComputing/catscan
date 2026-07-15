@@ -13,6 +13,8 @@ from catscan.data import DataView, get_event_data
 from catscan.events import trace_events
 from catscan.events.mapping import Mapper
 from catscan.state import CatscanState, HashableFrozenDict, Selection
+from catscan.widgets.event_row import RowType
+from catscan.widgets.resource_view import ResourceView, SubsetResourceView
 from catscan.widgets.top import Top
 from catscan.widgets.transaction_view import TransactionView
 
@@ -165,6 +167,41 @@ class TestEventViewViewport(TransactionSyncDataTest):
         )
         return view, events
 
+    def make_resource_data(self):
+        return get_event_data(
+            self.test_filename,
+            "resource",
+            mapper=Mapper([], [], []),
+            event_filters=trace_events.EventFilters(),
+            events=[
+                trace_events.trace_spec("work"),
+                trace_events.trace_spec("core.commit"),
+            ],
+            post_to_tx=[],
+            pull_from_tx=[],
+            occupancy=[],
+            pct_loaded_callback=lambda _pct: None,
+        )
+
+    def make_resource_view(self, view_type=ResourceView, **kwargs):
+        events = []
+        view = view_type(
+            "resource",
+            self.make_state(),
+            self.make_resource_data(),
+            on_zoom_in=lambda *_args, **_kwargs: False,
+            on_zoom_out=lambda *_args, **_kwargs: False,
+            on_scroll_left=lambda *_args, **_kwargs: False,
+            on_scroll_right=lambda *_args, **_kwargs: False,
+            on_toggle_expanded=lambda *_args, **_kwargs: False,
+            on_make_selection=lambda *_args, **_kwargs: False,
+            on_extend_selection=lambda *_args, **_kwargs: False,
+            on_translate_event=lambda *_args, **_kwargs: False,
+            on_viewport_change=lambda view, _align: events.append(view.top_visible_row_key()),
+            **kwargs,
+        )
+        return view, events
+
     def test_top_row_changes_on_key_navigation(self):
         view, events = self.make_view()
         size = (80, 1)
@@ -271,6 +308,32 @@ class TestEventViewViewport(TransactionSyncDataTest):
         view.keypress(size, "up")
 
         self.assertEqual(alignments, ["after", "before"])
+
+    def test_resource_selection_change_emits_position_notifications(self):
+        view, events = self.make_resource_view()
+        size = (80, 1)
+        view.render(size, focus=True)
+        events.clear()
+
+        view.update_selected_row(Selection("core.commit"))
+
+        self.assertEqual(view.focused_row(), (RowType.EVENT, "core.commit"))
+        self.assertEqual(view.top_visible_row_key(), "core.commit")
+        self.assertEqual(events[-1], "core.commit")
+
+    def test_subset_resource_selection_change_emits_position_notifications(self):
+        view, events = self.make_resource_view(SubsetResourceView, max_rows=2)
+        size = (80, 1)
+        view.add_event("work")
+        view.add_event("core.commit")
+        view.render(size, focus=True)
+        events.clear()
+
+        view.update_selected_row(Selection("core.commit"))
+
+        self.assertEqual(view.focused_row(), (RowType.EVENT, "core.commit"))
+        self.assertEqual(view.top_visible_row_key(), "core.commit")
+        self.assertEqual(events[-1], "core.commit")
 
 
 class TestTopTransactionCommitSync(TransactionSyncDataTest):
