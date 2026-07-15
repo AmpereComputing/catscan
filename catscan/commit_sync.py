@@ -98,31 +98,19 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
 
     def encode(self, obj: CommitSyncState | JsonValue) -> str:
         if isinstance(obj, CommitSyncState):
-            data = obj._asdict()
-            if obj.movement_alignment is not None:
-                data["transaction_row_align"] = {
-                    "before": "top",
-                    "after": "bottom",
-                }[obj.movement_alignment]
-            return super().encode(data)
+            return super().encode(obj._asdict())
         return super().encode(obj)
 
 
 class CommitSyncStateJSONDecoder(json.JSONDecoder):
     def decode(self, json_string: str) -> CommitSyncState:
         data = super().decode(json_string)
-        movement_alignment = data.get("movement_alignment")
-        if movement_alignment is None:
-            movement_alignment = {
-                "top": "before",
-                "bottom": "after",
-            }.get(data.get("transaction_row_align"))
         return CommitSyncState(
             sync_index=data.get("sync_index"),
             cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
             expand_rows=data["expand_rows"],
             chars_rel_to_start=data.get("chars_rel_to_start"),
-            movement_alignment=movement_alignment,
+            movement_alignment=data.get("movement_alignment"),
         )
 
 

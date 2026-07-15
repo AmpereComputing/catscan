@@ -170,7 +170,6 @@ class TestCommitSync(unittest.TestCase):
         self.assertIsNone(encoded_state["sync_index"])
         self.assertIsNone(encoded_state["chars_rel_to_start"])
         self.assertEqual(encoded_state["movement_alignment"], "after")
-        self.assertEqual(encoded_state["transaction_row_align"], "bottom")
 
     def test_state_json_decode_accepts_current_payload(self):
         decoder = CommitSyncStateJSONDecoder()
@@ -194,17 +193,6 @@ class TestCommitSync(unittest.TestCase):
 
         self.assertIsNone(state.movement_alignment)
         self.assertEqual(state.sync_index, 9)
-
-    def test_state_json_decode_legacy_transaction_row_align(self):
-        decoder = CommitSyncStateJSONDecoder()
-
-        state = decoder.decode(
-            '{"sync_index": 9, "cycles_per_char": {"numerator": 5, "denominator": 4}, '
-            '"expand_rows": false, "chars_rel_to_start": 11, "mode": "transaction_row", '
-            '"transaction_row_align": "bottom"}'
-        )
-
-        self.assertEqual(state.movement_alignment, "after")
 
     def test_transaction_row_receive_bypasses_pushout_scaling(self):
         received = []
