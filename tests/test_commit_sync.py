@@ -230,6 +230,30 @@ class TestCommitSync(unittest.TestCase):
         syncer.outgoing = None
         syncer.stop()
 
+    def test_receive_keeps_negative_offset_without_peer_pushout(self):
+        received = []
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            syncer = CommitSyncer(tmpfile.name, lambda: None, lambda: None, received.append)
+
+        syncer.initialized = True
+        syncer.stopped = False
+        syncer.outgoing = object()
+        syncer.my.pushout_index = {10: 8}
+        syncer.other.commit_index = {10: 100}
+        syncer.other.pushout_index = {}
+
+        sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=-1,
+        )
+        syncer.receive(sync_state)
+
+        self.assertEqual(received, [sync_state])
+        syncer.outgoing = None
+        syncer.stop()
+
 
 class TestCommitSyncHandshake(unittest.TestCase):
     def test_handshake_accepts_mixed_view_modes(self):

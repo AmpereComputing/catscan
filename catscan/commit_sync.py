@@ -446,7 +446,11 @@ class CommitSyncer:
         # Scale the synced horizontal time based on the relative differences in
         # commit pushout to ensure smoother movements around transitions
         # between the sync_index being synced against
-        if sync_state.chars_rel_to_start < 0 and sync_state.sync_index in self.my.pushout_index:
+        if (
+            sync_state.chars_rel_to_start < 0
+            and sync_state.sync_index in self.my.pushout_index
+            and sync_state.sync_index in self.other.pushout_index
+        ):
             scalable_rel_chars = max(sync_state.chars_rel_to_start, -self.other.pushout_index[sync_state.sync_index])
             rel_chars = sync_state.chars_rel_to_start - scalable_rel_chars
             if scalable_rel_chars:
