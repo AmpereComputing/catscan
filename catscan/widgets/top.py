@@ -11,7 +11,7 @@ from collections.abc import Callable, Iterable, Sequence
 from enum import StrEnum, auto
 from fractions import Fraction
 from sys import maxsize
-from typing import Any
+from typing import Any, Literal
 
 import urwid
 from perf_streams.event_stream import Event
@@ -1051,7 +1051,11 @@ class Top(urwid.widget.Widget):
     def send_commit_sync(self) -> None:
         self._send_commit_sync_for_row()
 
-    def _send_commit_sync_for_row(self, transaction_row_key: int | None = None) -> None:
+    def _send_commit_sync_for_row(
+        self,
+        transaction_row_key: str | int | None = None,
+        transaction_row_align: Literal["top", "bottom"] | None = None,
+    ) -> None:
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
@@ -1060,8 +1064,6 @@ class Top(urwid.widget.Widget):
             if transaction_row_key is None:
                 logging.info("Did not send transaction-row sync because no transaction row is visible or focused")
                 return
-
-            transaction_row_align = self._transaction_view.transaction_sync_align()
 
             sync_signature = (transaction_row_key, transaction_row_align)
             if sync_signature == self._last_transaction_sync_signature:
@@ -1168,7 +1170,7 @@ class Top(urwid.widget.Widget):
             external_sync=True,
         )
 
-    def on_viewport_change(self, view: EventView, _top_row_key: str | int | None) -> None:
+    def on_viewport_change(self, view: EventView, transaction_row_align: Literal["top", "bottom"] | None) -> None:
         if self.commit_sync_view_mode != DataView.TRANSACTIONS:
             return
 
@@ -1178,9 +1180,14 @@ class Top(urwid.widget.Widget):
         if self._suppress_transaction_commit_sync:
             return
 
-        self.send_commit_sync()
+        self._send_commit_sync_for_row(transaction_row_align=transaction_row_align)
 
-    def on_focus_row_change(self, view: EventView, focused_row_key: str | int | None) -> None:
+    def on_focus_row_change(
+        self,
+        view: EventView,
+        focused_row_key: str | int | None,
+        transaction_row_align: Literal["top", "bottom"] | None,
+    ) -> None:
         if self.commit_sync_view_mode != DataView.TRANSACTIONS:
             return
 
@@ -1190,7 +1197,7 @@ class Top(urwid.widget.Widget):
         if self._suppress_transaction_commit_sync:
             return
 
-        self._send_commit_sync_for_row(focused_row_key)
+        self._send_commit_sync_for_row(focused_row_key, transaction_row_align=transaction_row_align)
 
     def matching_rows(self, pattern: str) -> list[str]:
         row_pattern = glob_to_pattern(pattern)

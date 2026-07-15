@@ -146,7 +146,7 @@ class TestEventViewViewport(TransactionSyncDataTest):
             show_help=False,
         )
 
-    def make_view(self, callback=None):
+    def make_view(self, callback=None, focus_callback=None):
         events = []
         view = TransactionView(
             "transaction",
@@ -160,7 +160,8 @@ class TestEventViewViewport(TransactionSyncDataTest):
             on_make_selection=lambda *_args, **_kwargs: False,
             on_extend_selection=lambda *_args, **_kwargs: False,
             on_translate_event=lambda *_args, **_kwargs: False,
-            on_viewport_change=callback or (lambda _view, row_key: events.append(row_key)),
+            on_viewport_change=callback or (lambda view, _align: events.append(view.top_visible_row_key())),
+            on_focus_row_change=focus_callback,
         )
         return view, events
 
@@ -254,6 +255,22 @@ class TestEventViewViewport(TransactionSyncDataTest):
 
         view.keypress(size, "up")
         self.assertEqual(view.last_vertical_direction(), "up")
+
+    def test_focus_row_change_receives_scroll_alignment(self):
+        alignments = []
+        view, _events = self.make_view(
+            focus_callback=lambda _view, _focused_row_key, transaction_row_align: alignments.append(
+                transaction_row_align
+            )
+        )
+        size = (80, 1)
+        view.render(size, focus=True)
+        alignments.clear()
+
+        view.keypress(size, "down")
+        view.keypress(size, "up")
+
+        self.assertEqual(alignments, ["bottom", "top"])
 
 
 class TestTopTransactionCommitSync(TransactionSyncDataTest):

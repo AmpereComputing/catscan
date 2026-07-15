@@ -433,7 +433,6 @@ class EventView(urwid.WidgetWrap, View):
         self._last_top_visible_position = None
         self._last_focused_row_key = None
         self._last_vertical_direction = None
-        self._pending_transaction_sync_align = None
 
         View.__init__(self, name, state, stream_data)
         self.update_stream_data(stream_data)
@@ -529,7 +528,6 @@ class EventView(urwid.WidgetWrap, View):
         self._last_top_visible_position = None
         self._last_focused_row_key = None
         self._last_vertical_direction = None
-        self._pending_transaction_sync_align = None
         self._invalidate()
 
     def update_stream_data(self, stream_data: EventStreamData) -> None:
@@ -578,14 +576,11 @@ class EventView(urwid.WidgetWrap, View):
     def last_vertical_direction(self) -> Literal["up", "down"] | None:
         return self._last_vertical_direction
 
-    def transaction_sync_align(self) -> Literal["top", "bottom"] | None:
-        return self._pending_transaction_sync_align
-
     def _emit_position_change_notifications(self, force: bool = False) -> None:
-        self._pending_transaction_sync_align = None
-        self._emit_viewport_change_if_needed(force=force)
-        self._emit_focus_change_if_needed(force=force)
-        self._pending_transaction_sync_align = None
+        top_position = self._visible_top_position()
+        transaction_row_align = self._transaction_row_align(top_position)
+        self._emit_viewport_change_if_needed(top_position, transaction_row_align, force=force)
+        self._emit_focus_change_if_needed(transaction_row_align, force=force)
 
     def center_column(self, maxcol: int | None = None) -> int:
         maxcol = maxcol or self._columns
@@ -656,35 +651,48 @@ class EventView(urwid.WidgetWrap, View):
     def scroll_row_to_top(self, row_key: str | int) -> bool:
         return self.scroll_row_to_edge(row_key, "top")
 
-    def _emit_viewport_change_if_needed(self, force: bool = False) -> None:
-        if self.on_viewport_change is None:
-            return
-
-        top_position = self._visible_top_position()
-        top_row_key = self.top_visible_row_key()
+    def _transaction_row_align(self, top_position: int | None) -> Literal["top", "bottom"] | None:
         if (
             top_position is not None
             and self._last_top_visible_position is not None
             and top_position != self._last_top_visible_position
         ):
             self._last_vertical_direction = "down" if top_position > self._last_top_visible_position else "up"
-            self._pending_transaction_sync_align = "bottom" if self._last_vertical_direction == "down" else "top"
+            return "bottom" if self._last_vertical_direction == "down" else "top"
+        return None
 
+    def _top_visible_row_key_at_position(self, top_position: int | None) -> str | int | None:
+        if top_position is None:
+            return None
+
+        row_type, row_key = self.list_box.body[top_position].row_id()
+        return None if row_type is RowType.RESOURCE_BASE else row_key
+
+    def _emit_viewport_change_if_needed(
+        self,
+        top_position: int | None,
+        transaction_row_align: Literal["top", "bottom"] | None,
+        force: bool = False,
+    ) -> None:
+        top_row_key = self._top_visible_row_key_at_position(top_position)
         if force or top_row_key != self._last_top_visible_row_key:
             self._last_top_visible_row_key = top_row_key
             self._last_top_visible_position = top_position
-            self.on_viewport_change(self, top_row_key)
+            if self.on_viewport_change is not None:
+                self.on_viewport_change(self, transaction_row_align)
         else:
             self._last_top_visible_position = top_position
 
-    def _emit_focus_change_if_needed(self, force: bool = False) -> None:
+    def _emit_focus_change_if_needed(
+        self, transaction_row_align: Literal["top", "bottom"] | None, force: bool = False
+    ) -> None:
         if self.on_focus_row_change is None:
             return
 
         focused_row_key = self.focused_row_key()
         if force or focused_row_key != self._last_focused_row_key:
             self._last_focused_row_key = focused_row_key
-            self.on_focus_row_change(self, focused_row_key)
+            self.on_focus_row_change(self, focused_row_key, transaction_row_align)
 
     def _shift_focus(self, size: tuple[int, int], row_translation: int) -> bool:
         (maxcol, max_inset) = size
