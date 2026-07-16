@@ -1031,7 +1031,7 @@ class Top(urwid.widget.Widget):
 
             self.update_stream_data(
                 new_stream_data,
-                external_column_width=self.commit_syncer.other.column_header_width,
+                external_column_width=self.commit_syncer.other_column_header_width,
                 zoom_to_extents=False,
             )
 
@@ -1077,28 +1077,18 @@ class Top(urwid.widget.Widget):
         if self._commit_sync_view_mode() == DataView.TRANSACTIONS:
             transaction_row_key = transaction_row_key or self._transaction_view.focused_row_key()
 
-            other_sync_indexes = set(self.commit_syncer.other.commit_index) | set(
-                self.commit_syncer.other.pushout_index
+            anchor_sync_index = self.commit_syncer.first_other_sync_index(
+                self.transaction_row_commit_candidates.get(transaction_row_key, [])
             )
-            anchor_sync_index = None
-            for anchor_sync_index in self.transaction_row_commit_candidates.get(transaction_row_key, []):
-                if anchor_sync_index in other_sync_indexes:
-                    break
-            else:
-                anchor_sync_index = None
 
-            anchor_available = anchor_sync_index is not None
-            anchor_sync_state = None
-            if anchor_available:
-                anchor_sync_state = CommitSyncState(
+            if anchor_sync_index is not None:
+                sync_state = CommitSyncState(
                     sync_index=anchor_sync_index,
                     cycles_per_char=self.state.cycles_per_char,
                     expand_rows=self.state.expand_rows,
                     chars_rel_to_start=0,
                     movement_alignment=movement_alignment,
                 )
-            if anchor_sync_state is not None and not self.commit_syncer.sent_anchor_matches(anchor_sync_state):
-                sync_state = anchor_sync_state
             else:
                 sync_state = self._commit_sync_display_state(movement_alignment=movement_alignment)
             self.commit_syncer.send_if_changed(sync_state)
@@ -1106,34 +1096,33 @@ class Top(urwid.widget.Widget):
 
         if self.commit_sync_event not in self.stream_data.event_rows:
             logging.info("Did not send sync because instruction commit row didn't exist")
-            self.commit_syncer.send(self._commit_sync_display_state())
+            self.commit_syncer.send_if_changed(self._commit_sync_display_state())
             return
 
         closest_instruction_commit = self.stream_data.event_rows[self.commit_sync_event].closest_to(self.state.start_ps)
         if not closest_instruction_commit:
             logging.info("Did not send sync because closest instruction not found to start_ps")
-            self.commit_syncer.send(self._commit_sync_display_state())
+            self.commit_syncer.send_if_changed(self._commit_sync_display_state())
             return
 
         # If the commit we initially chose to synchronize on isn't present in
         # the other event stream, try a few subsequent commits in case we can
         # find one that is
-        other_sync_indexes = set(self.commit_syncer.other.commit_index) | set(self.commit_syncer.other.pushout_index)
         closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
-        if closest_sync_index not in other_sync_indexes:
+        if not self.commit_syncer.other_has_sync_index(closest_sync_index):
             for _ in range(20):
                 if next_commit := self.stream_data.event_rows[self.commit_sync_event].oldest_younger(
                     closest_instruction_commit
                 ):
                     closest_instruction_commit = next_commit
                     closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
-                    if closest_sync_index in other_sync_indexes:
+                    if self.commit_syncer.other_has_sync_index(closest_sync_index):
                         break
                 else:
                     break
 
-        if closest_sync_index not in other_sync_indexes:
-            self.commit_syncer.send(self._commit_sync_display_state())
+        if not self.commit_syncer.other_has_sync_index(closest_sync_index):
+            self.commit_syncer.send_if_changed(self._commit_sync_display_state())
             return
 
         offset_chars = round(
@@ -1148,7 +1137,7 @@ class Top(urwid.widget.Widget):
             expand_rows=self.state.expand_rows,
             chars_rel_to_start=offset_chars,
         )
-        self.commit_syncer.send(sync_state)
+        self.commit_syncer.send_if_changed(sync_state)
 
     def _commit_sync_sender_view_mode(self) -> DataView:
         if self.commit_syncer:
@@ -1193,10 +1182,11 @@ class Top(urwid.widget.Widget):
         preserve_transaction_position: bool = False,
     ) -> None:
         transaction_position = self._transaction_view_position() if preserve_transaction_position else None
-        state_values = {
-            "cycles_per_char": sync_state.cycles_per_char,
-            "expand_rows": sync_state.expand_rows,
-        }
+        state_values = {}
+        if sync_state.cycles_per_char is not None:
+            state_values["cycles_per_char"] = sync_state.cycles_per_char
+        if sync_state.expand_rows is not None:
+            state_values["expand_rows"] = sync_state.expand_rows
         if start_ps is not None:
             state_values["start_ps"] = start_ps
 
@@ -1276,7 +1266,10 @@ class Top(urwid.widget.Widget):
         # scaling of the received offset from the reference sync_index
         sync_index_commit_ps = self.commit_sync_index[sync_state.sync_index]
         new_start_ps = round(
-            sync_index_commit_ps + sync_state.chars_rel_to_start * sync_state.cycles_per_char * self.state.ps_per_cycle
+            sync_index_commit_ps
+            + sync_state.chars_rel_to_start
+            * (sync_state.cycles_per_char or self.state.cycles_per_char)
+            * self.state.ps_per_cycle
         )
 
         self._apply_commit_sync_display_state(sync_state, start_ps=new_start_ps)

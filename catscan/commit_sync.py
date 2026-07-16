@@ -73,9 +73,11 @@ class PushoutEvent(CatscanEvent):
 
 
 class CommitSyncState(NamedTuple):
-    sync_index: int | None  # The sync_index whose position we are syncing on, if one is available
-    cycles_per_char: Fraction  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
-    expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
+    sync_index: int | None = None  # The sync_index whose position we are syncing on, if one is available
+    cycles_per_char: Fraction | None = (
+        None  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
+    )
+    expand_rows: bool | None = None  # Whether the rows of events should be displayed in their 'expanded' form
     chars_rel_to_start: int | None = None  # The number of characters right-of-center the referenced sync_index is
     movement_alignment: Literal["before", "after"] | None = None
 
@@ -98,17 +100,20 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
 
     def encode(self, obj: CommitSyncState | JsonValue) -> str:
         if isinstance(obj, CommitSyncState):
-            return super().encode(obj._asdict())
+            return super().encode({key: value for key, value in obj._asdict().items() if value is not None})
         return super().encode(obj)
 
 
 class CommitSyncStateJSONDecoder(json.JSONDecoder):
     def decode(self, json_string: str) -> CommitSyncState:
         data = super().decode(json_string)
+        cycles_per_char = data.get("cycles_per_char")
         return CommitSyncState(
             sync_index=data.get("sync_index"),
-            cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
-            expand_rows=data["expand_rows"],
+            cycles_per_char=None
+            if cycles_per_char is None
+            else Fraction(cycles_per_char["numerator"], cycles_per_char["denominator"]),
+            expand_rows=data.get("expand_rows"),
             chars_rel_to_start=data.get("chars_rel_to_start"),
             movement_alignment=data.get("movement_alignment"),
         )
@@ -409,10 +414,38 @@ class CommitSyncer:
     def other_view_mode(self) -> DataView:
         return self.other.view_mode
 
+    @property
+    def other_column_header_width(self) -> int:
+        return self.other.column_header_width
+
+    def other_has_sync_index(self, sync_index: int) -> bool:
+        return sync_index in self.other.commit_index or sync_index in self.other.pushout_index
+
+    def first_other_sync_index(self, candidates: list[int]) -> int | None:
+        for sync_index in candidates:
+            if self.other_has_sync_index(sync_index):
+                return sync_index
+        return None
+
     def _remember_sent(self, sync_state: CommitSyncState) -> None:
         self._last_sent_sync_state = sync_state
         if sync_state.sync_index is not None:
             self._last_sent_anchor_state = sync_state
+
+    def _sent_anchor_matches(self, sync_state: CommitSyncState) -> bool:
+        if sync_state.sync_index is None:
+            return True
+        if self._last_sent_anchor_state is None:
+            return False
+        return (
+            sync_state.sync_index,
+            sync_state.chars_rel_to_start,
+            sync_state.movement_alignment,
+        ) == (
+            self._last_sent_anchor_state.sync_index,
+            self._last_sent_anchor_state.chars_rel_to_start,
+            self._last_sent_anchor_state.movement_alignment,
+        )
 
     def _sync_state_matches(
         self,
@@ -429,34 +462,74 @@ class CommitSyncer:
         return all(values[name] is None or last_values[name] == values[name] for name in field_names)
 
     def sent_anchor_matches(self, sync_state: CommitSyncState) -> bool:
-        return self._sync_state_matches(
-            sync_state,
-            self._last_sent_anchor_state,
-            ("sync_index", "chars_rel_to_start", "movement_alignment"),
+        return self._sent_anchor_matches(sync_state)
+
+    def _delta_sync_state(self, sync_state: CommitSyncState) -> CommitSyncState:
+        previous_sync_state = self._last_sent_sync_state
+        previous_values = previous_sync_state._asdict() if previous_sync_state else {}
+
+        sync_index = None
+        chars_rel_to_start = None
+        movement_alignment = None
+        if not self._sent_anchor_matches(sync_state):
+            sync_index = sync_state.sync_index
+            chars_rel_to_start = sync_state.chars_rel_to_start
+            movement_alignment = sync_state.movement_alignment
+
+        cycles_per_char = sync_state.cycles_per_char
+        if previous_values.get("cycles_per_char") == cycles_per_char:
+            cycles_per_char = None
+
+        expand_rows = sync_state.expand_rows
+        if previous_values.get("expand_rows") == expand_rows:
+            expand_rows = None
+
+        return CommitSyncState(
+            sync_index=sync_index,
+            cycles_per_char=cycles_per_char,
+            expand_rows=expand_rows,
+            chars_rel_to_start=chars_rel_to_start,
+            movement_alignment=movement_alignment,
         )
 
-    def send(self, sync_state: CommitSyncState) -> None:
+    def _sync_state_has_fields(self, sync_state: CommitSyncState) -> bool:
+        return any(value is not None for value in sync_state)
+
+    def _write_sync_state(
+        self, sync_state: CommitSyncState, remembered_sync_state: CommitSyncState | None = None
+    ) -> bool:
+        sync_index_json = self.state_encoder.encode(sync_state)
+        self.outgoing.write(f"{sync_index_json}\n")
+        self.outgoing.flush()
+        self._remember_sent(remembered_sync_state or sync_state)
+        return True
+
+    def send(self, sync_state: CommitSyncState) -> bool:
         if not self.syncing:
             logging.warning(
                 f"Dropping to-send commit sync message {sync_state} because the sync is either not initialized yet or has been closed/stopped."
             )
-            return
+            return False
 
-        sync_index_json = self.state_encoder.encode(sync_state)
-        self.outgoing.write(f"{sync_index_json}\n")
-        self.outgoing.flush()
-        self._remember_sent(sync_state)
+        return self._write_sync_state(sync_state)
 
     def send_if_changed(self, sync_state: CommitSyncState) -> bool:
-        if self._sync_state_matches(sync_state, self._last_sent_sync_state):
-            return False
-
         if not self.syncing:
-            self.send(sync_state)
+            return self.send(sync_state)
+
+        delta_sync_state = self._delta_sync_state(sync_state)
+        if not self._sync_state_has_fields(delta_sync_state):
             return False
 
-        self.send(sync_state)
-        return True
+        return self._write_sync_state(delta_sync_state, remembered_sync_state=sync_state)
+
+    def _dispatch_received_sync_state(self, sync_state: CommitSyncState) -> None:
+        if self.main_loop is None:
+            self.sync_callback(sync_state)
+        else:
+            self.latest_sync_state = sync_state
+            # Required to wakeup/interrupt main loop
+            os.write(self.notifier, b"u")
 
     def receive(self, sync_state: CommitSyncState) -> None:
         if not self.syncing:
@@ -470,13 +543,7 @@ class CommitSyncer:
             or sync_state.sync_index is None
             or sync_state.chars_rel_to_start is None
         ):
-            adjusted_sync_state = sync_state
-            if self.main_loop is None:
-                self.sync_callback(adjusted_sync_state)
-            else:
-                self.latest_sync_state = adjusted_sync_state
-                # Required to wakeup/interrupt main loop
-                os.write(self.notifier, b"u")
+            self._dispatch_received_sync_state(sync_state)
             return
 
         # Scale the synced horizontal time based on the relative differences in
@@ -519,9 +586,4 @@ class CommitSyncer:
             movement_alignment=sync_state.movement_alignment,
         )
 
-        if self.main_loop is None:
-            self.sync_callback(adjusted_sync_state)
-        else:
-            self.latest_sync_state = adjusted_sync_state
-            # Required to wakeup/interrupt main loop
-            os.write(self.notifier, b"u")
+        self._dispatch_received_sync_state(adjusted_sync_state)

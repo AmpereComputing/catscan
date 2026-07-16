@@ -168,8 +168,8 @@ class TestCommitSync(unittest.TestCase):
         encoded_state = json.loads(encoded)
 
         self.assertEqual(decoded, state)
-        self.assertIsNone(encoded_state["sync_index"])
-        self.assertIsNone(encoded_state["chars_rel_to_start"])
+        self.assertNotIn("sync_index", encoded_state)
+        self.assertNotIn("chars_rel_to_start", encoded_state)
         self.assertEqual(encoded_state["movement_alignment"], "after")
 
     def test_state_json_decode_accepts_current_payload(self):
@@ -183,6 +183,17 @@ class TestCommitSync(unittest.TestCase):
         self.assertIsNone(state.movement_alignment)
         self.assertEqual(state.sync_index, 9)
         self.assertEqual(state.cycles_per_char, Fraction(5, 4))
+
+    def test_state_json_decode_accepts_partial_payload(self):
+        decoder = CommitSyncStateJSONDecoder()
+
+        state = decoder.decode('{"expand_rows": true}')
+
+        self.assertIsNone(state.sync_index)
+        self.assertIsNone(state.cycles_per_char)
+        self.assertTrue(state.expand_rows)
+        self.assertIsNone(state.chars_rel_to_start)
+        self.assertIsNone(state.movement_alignment)
 
     def test_state_json_decode_ignores_legacy_mode(self):
         decoder = CommitSyncStateJSONDecoder()
@@ -268,6 +279,25 @@ class TestCommitSyncSendIfChanged(unittest.TestCase):
 
         self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 1)
 
+    def test_send_writes_given_state_without_delta_suppression(self):
+        syncer = self.make_syncer()
+        sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+
+        self.assertTrue(syncer.send(sync_state))
+        self.assertTrue(syncer.send(sync_state))
+        messages = [json.loads(line) for line in syncer.outgoing.getvalue().splitlines()]
+
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1]["sync_index"], 10)
+        self.assertEqual(messages[1]["cycles_per_char"], {"numerator": 1, "denominator": 1})
+        self.assertFalse(messages[1]["expand_rows"])
+        self.assertEqual(messages[1]["chars_rel_to_start"], 0)
+
     def test_send_if_changed_suppresses_duplicate_state(self):
         syncer = self.make_syncer()
         sync_state = CommitSyncState(
@@ -301,6 +331,53 @@ class TestCommitSyncSendIfChanged(unittest.TestCase):
         self.assertTrue(syncer.send_if_changed(second_sync_state))
 
         self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 2)
+
+    def test_display_only_delta_omits_anchor_fields(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        display_sync_state = CommitSyncState(
+            cycles_per_char=Fraction(1, 2),
+            expand_rows=True,
+        )
+
+        syncer.send_if_changed(anchored_sync_state)
+        self.assertTrue(syncer.send_if_changed(display_sync_state))
+        messages = [json.loads(line) for line in syncer.outgoing.getvalue().splitlines()]
+
+        self.assertNotIn("sync_index", messages[1])
+        self.assertNotIn("chars_rel_to_start", messages[1])
+        self.assertEqual(messages[1]["cycles_per_char"], {"numerator": 1, "denominator": 2})
+        self.assertTrue(messages[1]["expand_rows"])
+
+    def test_repeated_anchor_omits_anchor_fields_but_sends_display_changes(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        changed_display_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 2),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+
+        syncer.send_if_changed(anchored_sync_state)
+        self.assertTrue(syncer.send_if_changed(changed_display_sync_state))
+        messages = [json.loads(line) for line in syncer.outgoing.getvalue().splitlines()]
+
+        self.assertNotIn("sync_index", messages[1])
+        self.assertNotIn("chars_rel_to_start", messages[1])
+        self.assertEqual(messages[1]["cycles_per_char"], {"numerator": 1, "denominator": 2})
+        self.assertNotIn("expand_rows", messages[1])
+        self.assertEqual(syncer._last_sent_sync_state, changed_display_sync_state)
 
     def test_send_if_changed_ignores_none_fields(self):
         syncer = self.make_syncer()
@@ -359,6 +436,37 @@ class TestCommitSyncSendIfChanged(unittest.TestCase):
         syncer.send(anchored_sync_state)
 
         self.assertFalse(syncer.sent_anchor_matches(different_anchor_sync_state))
+
+    def test_sent_anchor_matches_detects_different_alignment(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        different_alignment_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+            movement_alignment="after",
+        )
+
+        syncer.send(anchored_sync_state)
+
+        self.assertFalse(syncer.sent_anchor_matches(different_alignment_sync_state))
+
+    def test_peer_sync_index_helpers_check_commit_and_pushout_indexes(self):
+        syncer = self.make_syncer()
+        syncer.other.commit_index = {10: 100}
+        syncer.other.pushout_index = {20: 2}
+
+        self.assertTrue(syncer.other_has_sync_index(10))
+        self.assertTrue(syncer.other_has_sync_index(20))
+        self.assertFalse(syncer.other_has_sync_index(30))
+        self.assertEqual(syncer.first_other_sync_index([30, 20, 10]), 20)
+        self.assertIsNone(syncer.first_other_sync_index([30, 40]))
 
 
 class TestCommitSyncHandshake(unittest.TestCase):

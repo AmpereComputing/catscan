@@ -68,11 +68,67 @@ class DummyCommitSyncer:
     def other_view_mode(self):
         return self.other.view_mode
 
+    @property
+    def other_column_header_width(self):
+        return self.other.column_header_width
+
+    def other_has_sync_index(self, sync_index):
+        return sync_index in self.other.commit_index or sync_index in self.other.pushout_index
+
+    def first_other_sync_index(self, candidates):
+        for sync_index in candidates:
+            if self.other_has_sync_index(sync_index):
+                return sync_index
+        return None
+
+    def _sent_anchor_matches(self, sync_state):
+        if sync_state.sync_index is None:
+            return True
+        if self._last_sent_anchor_state is None:
+            return False
+        return (
+            sync_state.sync_index,
+            sync_state.chars_rel_to_start,
+            sync_state.movement_alignment,
+        ) == (
+            self._last_sent_anchor_state.sync_index,
+            self._last_sent_anchor_state.chars_rel_to_start,
+            self._last_sent_anchor_state.movement_alignment,
+        )
+
+    def _delta_sync_state(self, sync_state):
+        previous_values = self._last_sent_sync_state._asdict() if self._last_sent_sync_state else {}
+
+        sync_index = None
+        chars_rel_to_start = None
+        movement_alignment = None
+        if not self._sent_anchor_matches(sync_state):
+            sync_index = sync_state.sync_index
+            chars_rel_to_start = sync_state.chars_rel_to_start
+            movement_alignment = sync_state.movement_alignment
+
+        cycles_per_char = sync_state.cycles_per_char
+        if previous_values.get("cycles_per_char") == cycles_per_char:
+            cycles_per_char = None
+
+        expand_rows = sync_state.expand_rows
+        if previous_values.get("expand_rows") == expand_rows:
+            expand_rows = None
+
+        return CommitSyncState(
+            sync_index=sync_index,
+            cycles_per_char=cycles_per_char,
+            expand_rows=expand_rows,
+            chars_rel_to_start=chars_rel_to_start,
+            movement_alignment=movement_alignment,
+        )
+
     def send(self, sync_state):
         self.sent.append(sync_state)
         self._last_sent_sync_state = sync_state
         if sync_state.sync_index is not None:
             self._last_sent_anchor_state = sync_state
+        return True
 
     def _sync_state_matches(self, sync_state, previous_sync_state, field_names=None):
         if previous_sync_state is None:
@@ -84,17 +140,16 @@ class DummyCommitSyncer:
         return all(values[name] is None or last_values[name] == values[name] for name in field_names)
 
     def sent_anchor_matches(self, sync_state):
-        return self._sync_state_matches(
-            sync_state,
-            self._last_sent_anchor_state,
-            ("sync_index", "chars_rel_to_start", "movement_alignment"),
-        )
+        return self._sent_anchor_matches(sync_state)
 
     def send_if_changed(self, sync_state):
-        if self._sync_state_matches(sync_state, self._last_sent_sync_state):
+        delta_sync_state = self._delta_sync_state(sync_state)
+        if not any(value is not None for value in delta_sync_state):
             return False
-
-        self.send(sync_state)
+        self.sent.append(delta_sync_state)
+        self._last_sent_sync_state = sync_state
+        if sync_state.sync_index is not None:
+            self._last_sent_anchor_state = sync_state
         return True
 
 
@@ -635,10 +690,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
         top.receive_commit_sync(
             CommitSyncState(
-                sync_index=None,
                 cycles_per_char=Fraction(1, 8),
-                expand_rows=True,
-                chars_rel_to_start=None,
             )
         )
 
@@ -646,7 +698,39 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(top._transaction_view.top_visible_row_key(), initial_top)
         self.assertEqual(top.state.start_ps, initial_start_ps)
         self.assertEqual(top.state.cycles_per_char, Fraction(1, 8))
+        self.assertFalse(top.state.expand_rows)
+
+    def test_expand_only_display_sync_preserves_transaction_view_and_zoom(self):
+        top = self.make_top(size=(120, 3))
+        top._transaction_view.scroll_row_to_top(self.txids[3])
+        top.update_state(top.state.copy_with(start_ps=1230, cycles_per_char=Fraction(4, 1), expand_rows=False))
+        top.commit_syncer = DummyCommitSyncer(other_view_mode=DataView.TRANSACTIONS)
+        initial_focus = top._transaction_view.focused_row()[1]
+        initial_top = top._transaction_view.top_visible_row_key()
+        initial_start_ps = top.state.start_ps
+
+        top.receive_commit_sync(CommitSyncState(expand_rows=True))
+
+        self.assertEqual(top._transaction_view.focused_row()[1], initial_focus)
+        self.assertEqual(top._transaction_view.top_visible_row_key(), initial_top)
+        self.assertEqual(top.state.start_ps, initial_start_ps)
+        self.assertEqual(top.state.cycles_per_char, Fraction(4, 1))
         self.assertTrue(top.state.expand_rows)
+
+    def test_resource_time_sync_uses_local_zoom_when_sender_omits_zoom(self):
+        top = self.make_top(view=DataView.RESOURCE)
+        top.update_state(top.state.copy_with(cycles_per_char=Fraction(2, 1), start_ps=0))
+        top.commit_syncer = DummyCommitSyncer(view_mode=DataView.RESOURCE, other_view_mode=DataView.RESOURCE)
+
+        top.receive_commit_sync(
+            CommitSyncState(
+                sync_index=40,
+                chars_rel_to_start=3,
+            )
+        )
+
+        self.assertEqual(top.state.start_ps, 160)
+        self.assertEqual(top.state.cycles_per_char, Fraction(2, 1))
 
     def test_remote_resource_time_scroll_does_not_echo_transaction_sync(self):
         top = self.make_top(size=(120, 2))
