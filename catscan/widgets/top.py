@@ -1064,19 +1064,13 @@ class Top(urwid.widget.Widget):
             movement_alignment=movement_alignment,
         )
 
-    def send_commit_sync(
-        self,
-        transaction_row_key: str | int | None = None,
-        movement_alignment: Literal["before", "after"] | None = None,
-    ) -> None:
+    def send_commit_sync(self, movement_alignment: Literal["before", "after"] | None = None) -> None:
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
         if self._commit_sync_view_mode() == DataView.TRANSACTIONS:
-            transaction_row_key = transaction_row_key or self._transaction_view.focused_row_key()
-
             anchor_sync_index = self.commit_syncer.first_other_sync_index(
-                self._transaction_view.commit_sync_candidates(transaction_row_key)
+                self._transaction_view.commit_sync_index_candidates()
             )
 
             if anchor_sync_index is not None:
@@ -1092,45 +1086,22 @@ class Top(urwid.widget.Widget):
             self.commit_syncer.send_if_changed(sync_state)
             return
 
-        if self.commit_sync_event not in self.stream_data.event_rows:
-            logging.info("Did not send sync because instruction commit row didn't exist")
-            self.commit_syncer.send_if_changed(self._commit_sync_display_state())
-            return
-
-        closest_instruction_commit = self.stream_data.event_rows[self.commit_sync_event].closest_to(self.state.start_ps)
-        if not closest_instruction_commit:
-            logging.info("Did not send sync because closest instruction not found to start_ps")
-            self.commit_syncer.send_if_changed(self._commit_sync_display_state())
-            return
-
-        # If the commit we initially chose to synchronize on isn't present in
-        # the other event stream, try a few subsequent commits in case we can
-        # find one that is
-        closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
-        if not self.commit_syncer.other_has_sync_index(closest_sync_index):
-            for _ in range(20):
-                if next_commit := self.stream_data.event_rows[self.commit_sync_event].oldest_younger(
-                    closest_instruction_commit
-                ):
-                    closest_instruction_commit = next_commit
-                    closest_sync_index = closest_instruction_commit.data[self.commit_sync_data_name]
-                    if self.commit_syncer.other_has_sync_index(closest_sync_index):
-                        break
-                else:
-                    break
-
-        if not self.commit_syncer.other_has_sync_index(closest_sync_index):
+        anchor_sync_index = self.commit_syncer.first_other_sync_index(
+            self._resource_view.commit_sync_index_candidates()
+        )
+        if anchor_sync_index is None:
+            logging.info("Did not send sync because no shared instruction commit was found")
             self.commit_syncer.send_if_changed(self._commit_sync_display_state())
             return
 
         offset_chars = round(
-            (self.state.start_ps - closest_instruction_commit.time)
+            (self.state.start_ps - self.commit_sync_index[anchor_sync_index])
             * self.state.cycles_per_char.denominator
             / self.state.cycles_per_char.numerator
             / self.state.ps_per_cycle
         )
         sync_state = CommitSyncState(
-            sync_index=closest_instruction_commit.data[self.commit_sync_data_name],
+            sync_index=anchor_sync_index,
             cycles_per_char=self.state.cycles_per_char,
             expand_rows=self.state.expand_rows,
             chars_rel_to_start=offset_chars,
@@ -1261,7 +1232,7 @@ class Top(urwid.widget.Widget):
     def on_focus_row_change(
         self,
         view: EventView,
-        focused_row_key: str | int | None,
+        _focused_row_key: str | int | None,
         movement_alignment: Literal["before", "after"] | None,
     ) -> None:
         if self._commit_sync_view_mode() != DataView.TRANSACTIONS:
@@ -1273,7 +1244,7 @@ class Top(urwid.widget.Widget):
         if self._transaction_view.suppressing_commit_sync:
             return
 
-        self.send_commit_sync(focused_row_key, movement_alignment=movement_alignment)
+        self.send_commit_sync(movement_alignment=movement_alignment)
 
     def matching_rows(self, pattern: str) -> list[str]:
         row_pattern = glob_to_pattern(pattern)

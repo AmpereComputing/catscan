@@ -433,8 +433,9 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         stream_data = self.load_resource_event_data() if view == DataView.RESOURCE else self.esd
         top.update_stream_data(stream_data)
         top.render(size, focus=True)
-        if start_commit_sync and view == DataView.TRANSACTIONS:
-            top._transaction_view.start_commit_sync(top.commit_sync_event, top.commit_sync_data_name)
+        if start_commit_sync:
+            for event_view in top._event_views():
+                event_view.start_commit_sync(top.commit_sync_event, top.commit_sync_data_name)
         return top
 
     def test_focused_row_with_one_shared_commit_anchors_correctly(self):
@@ -490,8 +491,10 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top = self.make_top()
         top.commit_syncer = DummyCommitSyncer(other_commit_index={999: 999}, other_view_mode=DataView.TRANSACTIONS)
 
-        top.send_commit_sync(self.txids[0])
-        top.send_commit_sync(self.txids[1])
+        top._transaction_view.scroll_row_to_top_for_commit_sync(self.txids[0])
+        top.send_commit_sync()
+        top._transaction_view.scroll_row_to_top_for_commit_sync(self.txids[1])
+        top.send_commit_sync()
 
         self.assertEqual(len(top.commit_syncer.sent), 1)
         self.assertIsNone(top.commit_syncer.sent[0].sync_index)
@@ -522,20 +525,21 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
     def test_non_commit_event_with_index_is_not_transaction_anchor(self):
         top = self.make_top()
+        top._transaction_view.scroll_row_to_top_for_commit_sync(self.txids[2])
 
         self.assertIsNone(top._transaction_view.commit_sync_row(999))
-        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[2]), [])
+        self.assertEqual(top._transaction_view.commit_sync_index_candidates(), [])
 
     def test_transaction_anchors_are_lazy(self):
         top = self.make_top(start_commit_sync=False)
 
         self.assertIsNone(top._transaction_view.commit_sync_row(10))
-        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[0]), [])
+        self.assertEqual(top._transaction_view.commit_sync_index_candidates(), [])
 
         top._transaction_view.start_commit_sync(top.commit_sync_event, top.commit_sync_data_name)
 
         self.assertEqual(top._transaction_view.commit_sync_row(10), self.txids[0])
-        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[0]), [10, 11])
+        self.assertEqual(top._transaction_view.commit_sync_index_candidates(), [10, 11])
 
     def test_transaction_anchors_clear_when_sync_stops(self):
         top = self.make_top()
@@ -543,7 +547,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top._transaction_view.stop_commit_sync()
 
         self.assertIsNone(top._transaction_view.commit_sync_row(10))
-        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[0]), [])
+        self.assertEqual(top._transaction_view.commit_sync_index_candidates(), [])
 
     def test_scrolling_down_sends_after_alignment(self):
         top = self.make_top(size=(120, 2))

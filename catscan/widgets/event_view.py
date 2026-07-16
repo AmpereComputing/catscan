@@ -543,6 +543,9 @@ class EventView(urwid.WidgetWrap, View):
     def stop_commit_sync(self) -> None:
         pass
 
+    def commit_sync_index_candidates(self) -> list[int]:
+        return []
+
     def update_state(self, new_state: CatscanState) -> bool:
         if not super().update_state(new_state):
             return False

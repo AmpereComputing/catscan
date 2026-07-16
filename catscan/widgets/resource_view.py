@@ -32,6 +32,8 @@ class ResourceView(EventView):
         **kwargs: Any,
     ) -> None:
         self._include_groups = include_groups
+        self._commit_sync_event: str | None = None
+        self._commit_sync_data_name: str | None = None
         super().__init__(*args, **kwargs)
 
     @property
@@ -106,6 +108,36 @@ class ResourceView(EventView):
                 max_group_name = 0
             return max(max_event_name, max_group_name)
         return 1
+
+    def start_commit_sync(self, commit_event: str, commit_data_name: str) -> None:
+        self._commit_sync_event = commit_event
+        self._commit_sync_data_name = commit_data_name
+
+    def stop_commit_sync(self) -> None:
+        self._commit_sync_event = None
+        self._commit_sync_data_name = None
+
+    def commit_sync_index_candidates(self) -> list[int]:
+        if self._commit_sync_event is None or self._commit_sync_data_name is None:
+            return []
+        if self._commit_sync_event not in self.stream_data.event_rows:
+            return []
+
+        closest_commit = self.stream_data.event_rows[self._commit_sync_event].closest_to(self.state.start_ps)
+        if not closest_commit:
+            return []
+
+        candidates = []
+        for _ in range(21):
+            if self._commit_sync_data_name in closest_commit.data:
+                candidates.append(closest_commit.data[self._commit_sync_data_name])
+
+            if next_commit := self.stream_data.event_rows[self._commit_sync_event].oldest_younger(closest_commit):
+                closest_commit = next_commit
+            else:
+                break
+
+        return candidates
 
     def _update_selected_row_name(self, newly_selected_row: str) -> None:
         row_position = self.event_row_position(newly_selected_row)

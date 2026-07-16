@@ -84,8 +84,8 @@ class TransactionView(EventView):
         self._commit_sync_row_by_index = {}
         self._suppress_commit_sync = False
 
-    def commit_sync_candidates(self, row_key: str | int | None) -> list[int]:
-        return self._commit_sync_candidates_by_row.get(row_key, [])
+    def commit_sync_index_candidates(self) -> list[int]:
+        return self._commit_sync_candidates_by_row.get(self.focused_row_key(), [])
 
     def commit_sync_row(self, sync_index: int) -> str | int | None:
         return self._commit_sync_row_by_index.get(sync_index)
