@@ -1,9 +1,10 @@
 # Copyright (c) 2024 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
-from typing import Any
+from collections.abc import Callable
+from typing import Any, Literal
 
-from catscan.data import Event, EventStreamDataTransactionView, TransactionEventData
+from catscan.data import EventStreamDataTransactionView, TransactionEventData
 from catscan.widgets.event_row import EventRow
 from catscan.widgets.event_view import EventView
 
@@ -37,6 +38,12 @@ class TransactionView(EventView):
     Display rows of transactions with their respective events.
     """
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._commit_sync_candidates_by_row: dict[str | int, list[int]] = {}
+        self._commit_sync_row_by_index: dict[int, str | int] = {}
+        self._suppress_commit_sync = False
+        super().__init__(*args, **kwargs)
+
     def data_view(self, **kwargs: Any) -> EventStreamDataTransactionView:
         return self.stream_data.transaction_events(**kwargs)
 
@@ -58,6 +65,81 @@ class TransactionView(EventView):
         if self.stream_data.transaction_event_rows:
             return max(len(str(t.name)) + t.level for t in self.stream_data.transaction_event_rows.values()) + 3
         return 3
+
+    def start_commit_sync(self, commit_event: str, commit_data_name: str) -> None:
+        self._commit_sync_candidates_by_row = {}
+        self._commit_sync_row_by_index = {}
+        for txid, transaction_row in self.stream_data.transaction_event_rows.items():
+            candidates = []
+            for event in transaction_row[:]:
+                if event.name == commit_event and commit_data_name in event.data:
+                    sync_index = event.data[commit_data_name]
+                    candidates.append(sync_index)
+                    self._commit_sync_row_by_index[sync_index] = txid
+            if candidates:
+                self._commit_sync_candidates_by_row[txid] = candidates
+
+    def stop_commit_sync(self) -> None:
+        self._commit_sync_candidates_by_row = {}
+        self._commit_sync_row_by_index = {}
+        self._suppress_commit_sync = False
+
+    def commit_sync_candidates(self, row_key: str | int | None) -> list[int]:
+        return self._commit_sync_candidates_by_row.get(row_key, [])
+
+    def commit_sync_row(self, sync_index: int) -> str | int | None:
+        return self._commit_sync_row_by_index.get(sync_index)
+
+    def commit_sync_position(self) -> tuple[str | int | None, str | int | None]:
+        return self.top_visible_row_key(), self.focused_row_key()
+
+    def restore_commit_sync_position(self, position: tuple[str | int | None, str | int | None]) -> None:
+        top_row_key, focused_row_key = position
+        if top_row_key is None and focused_row_key is None:
+            return
+
+        def restore_position() -> None:
+            top_position = None
+            if top_row_key is not None:
+                top_position = self.event_row_position(top_row_key)
+                if top_position is not None:
+                    self.list_box.set_focus(top_position)
+                    self.list_box.set_focus_valign("top")
+
+            if focused_row_key is not None and focused_row_key != top_row_key:
+                focused_position = self.event_row_position(focused_row_key)
+                if focused_position is not None:
+                    coming_from = "above" if top_position is None or focused_position >= top_position else "below"
+                    self.list_box.set_focus(focused_position, coming_from)
+
+            self._emit_position_change_notifications(force=True)
+            self._invalidate()
+
+        self._with_commit_sync_suppressed(restore_position)
+
+    def scroll_row_to_edge_for_commit_sync(self, row_key: str | int, align: Literal["top", "bottom"] = "top") -> bool:
+        scrolled = False
+
+        def scroll() -> None:
+            nonlocal scrolled
+            scrolled = self.scroll_row_to_edge(row_key, align)
+
+        self._with_commit_sync_suppressed(scroll)
+        return scrolled
+
+    def scroll_row_to_top_for_commit_sync(self, row_key: str | int) -> bool:
+        return self.scroll_row_to_edge_for_commit_sync(row_key, "top")
+
+    @property
+    def suppressing_commit_sync(self) -> bool:
+        return self._suppress_commit_sync
+
+    def _with_commit_sync_suppressed(self, operation: Callable[[], None]) -> None:
+        self._suppress_commit_sync = True
+        try:
+            operation()
+        finally:
+            self._suppress_commit_sync = False
 
     def _update_selected_row_name(self, newly_selected_row: int) -> None:
         row_position = self.event_row_position(newly_selected_row)

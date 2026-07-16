@@ -427,12 +427,14 @@ class TestEventViewViewport(TransactionSyncDataTest):
 
 
 class TestTopTransactionCommitSync(TransactionSyncDataTest):
-    def make_top(self, size=(120, 4), view=DataView.TRANSACTIONS):
+    def make_top(self, size=(120, 4), view=DataView.TRANSACTIONS, start_commit_sync=True):
         top = Top(Args(view=view))
         top.cached_maxcol = 120
         stream_data = self.load_resource_event_data() if view == DataView.RESOURCE else self.esd
         top.update_stream_data(stream_data)
         top.render(size, focus=True)
+        if start_commit_sync and view == DataView.TRANSACTIONS:
+            top._transaction_view.start_commit_sync(top.commit_sync_event, top.commit_sync_data_name)
         return top
 
     def test_focused_row_with_one_shared_commit_anchors_correctly(self):
@@ -521,8 +523,27 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
     def test_non_commit_event_with_index_is_not_transaction_anchor(self):
         top = self.make_top()
 
-        self.assertNotIn(999, top.commit_sync_index_to_transaction_row)
-        self.assertNotIn(self.txids[2], top.transaction_row_commit_candidates)
+        self.assertIsNone(top._transaction_view.commit_sync_row(999))
+        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[2]), [])
+
+    def test_transaction_anchors_are_lazy(self):
+        top = self.make_top(start_commit_sync=False)
+
+        self.assertIsNone(top._transaction_view.commit_sync_row(10))
+        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[0]), [])
+
+        top._transaction_view.start_commit_sync(top.commit_sync_event, top.commit_sync_data_name)
+
+        self.assertEqual(top._transaction_view.commit_sync_row(10), self.txids[0])
+        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[0]), [10, 11])
+
+    def test_transaction_anchors_clear_when_sync_stops(self):
+        top = self.make_top()
+
+        top._transaction_view.stop_commit_sync()
+
+        self.assertIsNone(top._transaction_view.commit_sync_row(10))
+        self.assertEqual(top._transaction_view.commit_sync_candidates(self.txids[0]), [])
 
     def test_scrolling_down_sends_after_alignment(self):
         top = self.make_top(size=(120, 2))
@@ -748,7 +769,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         )
 
         self.assertEqual(top.commit_syncer.sent, [])
-        self.assertFalse(top._suppress_transaction_commit_sync)
+        self.assertFalse(top._transaction_view.suppressing_commit_sync)
         self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
         self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
@@ -788,7 +809,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         )
 
         self.assertEqual(top.commit_syncer.sent, [])
-        self.assertFalse(top._suppress_transaction_commit_sync)
+        self.assertFalse(top._transaction_view.suppressing_commit_sync)
         self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
         self.assertEqual(top.state.expand_rows, sync_expand_rows)
 

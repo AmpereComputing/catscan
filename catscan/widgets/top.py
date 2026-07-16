@@ -7,7 +7,7 @@ import re
 from argparse import Namespace
 from asyncio import Future
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from enum import StrEnum, auto
 from fractions import Fraction
 from sys import maxsize
@@ -51,7 +51,7 @@ from catscan.util import glob_to_pattern, hex_args_to_re
 from catscan.widgets.ampere_logo import AmpereLogo
 from catscan.widgets.event_row import RowType
 from catscan.widgets.event_sidebar import EventDetail
-from catscan.widgets.event_view import EventView, PrimarySplitEventView, RowViews, View
+from catscan.widgets.event_view import EventView, PrimarySplitEventView, RowViews, View, Views
 from catscan.widgets.popups import Help, Messages
 from catscan.widgets.resource_view import ResourceView, SubsetResourceView
 from catscan.widgets.separators import MiddleBorder
@@ -121,10 +121,7 @@ class Top(urwid.widget.Widget):
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
         self.commit_sync_index = {}
-        self.transaction_row_commit_candidates = {}
-        self.commit_sync_index_to_transaction_row = {}
         self.commit_syncer = None
-        self._suppress_transaction_commit_sync = False
 
         self.loading_pct = 0
         self.loading_thread = None
@@ -250,6 +247,14 @@ class Top(urwid.widget.Widget):
     @property
     def _transaction_view(self) -> TransactionView:
         return self.view_rows[f"{DefaultViews.MAIN}.{DefaultViews.TRANSACTION}"]
+
+    def _event_views(self, view: View | None = None) -> Iterator[EventView]:
+        view = view or self.view_rows
+        if isinstance(view, EventView):
+            yield view
+        elif isinstance(view, Views):
+            for child_view in view.event_views:
+                yield from self._event_views(child_view)
 
     def _commit_sync_view_mode(self) -> DataView:
         if self.commit_syncer:
@@ -488,19 +493,6 @@ class Top(urwid.widget.Widget):
                         self.commit_sync_index[event.data[self.commit_sync_data_name]] = event.time
 
         self.pushout_index = build_pushout_index(self.commit_sync_index, ps_per_cycle)
-
-        if self._commit_sync_view_mode() == DataView.TRANSACTIONS:
-            self.transaction_row_commit_candidates = {}
-            self.commit_sync_index_to_transaction_row = {}
-            for txid, transaction_row in self.stream_data.transaction_event_rows.items():
-                candidates = []
-                for event in transaction_row[:]:
-                    if event.name == self.commit_sync_event and self.commit_sync_data_name in event.data:
-                        sync_index = event.data[self.commit_sync_data_name]
-                        candidates.append(sync_index)
-                        self.commit_sync_index_to_transaction_row[sync_index] = txid
-                if candidates:
-                    self.transaction_row_commit_candidates[txid] = candidates
 
         self.time_header.update_stream_data(stream_data)
         self.view_rows.update_stream_data(stream_data)
@@ -1035,6 +1027,9 @@ class Top(urwid.widget.Widget):
                 zoom_to_extents=False,
             )
 
+        for view in self._event_views():
+            view.start_commit_sync(self.commit_sync_event, self.commit_sync_data_name)
+
         self.eval_commands(self.init_sync_commands)
 
         # Force redrawing the screen since we're updating the state outside
@@ -1042,6 +1037,9 @@ class Top(urwid.widget.Widget):
         self.main_loop.draw_screen()
 
     def stop_commit_sync(self) -> None:
+        for view in self._event_views():
+            view.stop_commit_sync()
+
         if hasattr(self, "saved_stream_data"):
             # Restore the copy of the event stream data that we took prior to
             # starting instruction sync
@@ -1078,7 +1076,7 @@ class Top(urwid.widget.Widget):
             transaction_row_key = transaction_row_key or self._transaction_view.focused_row_key()
 
             anchor_sync_index = self.commit_syncer.first_other_sync_index(
-                self.transaction_row_commit_candidates.get(transaction_row_key, [])
+                self._transaction_view.commit_sync_candidates(transaction_row_key)
             )
 
             if anchor_sync_index is not None:
@@ -1147,32 +1145,14 @@ class Top(urwid.widget.Widget):
     def _transaction_view_position(self) -> tuple[str | int | None, str | int | None]:
         if self._commit_sync_view_mode() != DataView.TRANSACTIONS:
             return None, None
-        return self._transaction_view.top_visible_row_key(), self._transaction_view.focused_row_key()
+        return self._transaction_view.commit_sync_position()
 
     def _restore_transaction_view_position(self, position: tuple[str | int | None, str | int | None]) -> None:
         top_row_key, focused_row_key = position
         if self._commit_sync_view_mode() != DataView.TRANSACTIONS or (top_row_key is None and focused_row_key is None):
             return
 
-        self._suppress_transaction_commit_sync = True
-        try:
-            top_position = None
-            if top_row_key is not None:
-                top_position = self._transaction_view.event_row_position(top_row_key)
-                if top_position is not None:
-                    self._transaction_view.list_box.set_focus(top_position)
-                    self._transaction_view.list_box.set_focus_valign("top")
-
-            if focused_row_key is not None and focused_row_key != top_row_key:
-                focused_position = self._transaction_view.event_row_position(focused_row_key)
-                if focused_position is not None:
-                    coming_from = "above" if top_position is None or focused_position >= top_position else "below"
-                    self._transaction_view.list_box.set_focus(focused_position, coming_from)
-
-            self._transaction_view._emit_position_change_notifications(force=True)
-            self._transaction_view._invalidate()
-        finally:
-            self._suppress_transaction_commit_sync = False
+        self._transaction_view.restore_commit_sync_position(position)
 
     def _apply_commit_sync_display_state(
         self,
@@ -1215,7 +1195,7 @@ class Top(urwid.widget.Widget):
                 )
                 return
 
-            transaction_row = self.commit_sync_index_to_transaction_row.get(sync_state.sync_index)
+            transaction_row = self._transaction_view.commit_sync_row(sync_state.sync_index)
             if transaction_row is None:
                 logging.info(
                     f"Received transaction-row sync_index not in transaction-row index: {sync_state.sync_index}"
@@ -1227,15 +1207,11 @@ class Top(urwid.widget.Widget):
             if self._transaction_view.is_row_visible(transaction_row):
                 return
 
-            self._suppress_transaction_commit_sync = True
-            try:
-                row_align = {
-                    "before": "top",
-                    "after": "bottom",
-                }[sync_state.movement_alignment or "before"]
-                self._transaction_view.scroll_row_to_edge(transaction_row, row_align)
-            finally:
-                self._suppress_transaction_commit_sync = False
+            row_align = {
+                "before": "top",
+                "after": "bottom",
+            }[sync_state.movement_alignment or "before"]
+            self._transaction_view.scroll_row_to_edge_for_commit_sync(transaction_row, row_align)
             return
 
         if sync_state.sync_index not in self.commit_sync_index:
@@ -1244,18 +1220,14 @@ class Top(urwid.widget.Widget):
             return
 
         if self._commit_sync_view_mode() == DataView.TRANSACTIONS:
-            transaction_row = self.commit_sync_index_to_transaction_row.get(sync_state.sync_index)
+            transaction_row = self._transaction_view.commit_sync_row(sync_state.sync_index)
             if transaction_row is None:
                 logging.info(f"Received time sync_index not in transaction-row index: {sync_state.sync_index}")
                 self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
                 return
 
             self._apply_commit_sync_display_state(sync_state)
-            self._suppress_transaction_commit_sync = True
-            try:
-                self._transaction_view.scroll_row_to_top(transaction_row)
-            finally:
-                self._suppress_transaction_commit_sync = False
+            self._transaction_view.scroll_row_to_top_for_commit_sync(transaction_row)
             return
 
         if sync_state.chars_rel_to_start is None:
@@ -1281,7 +1253,7 @@ class Top(urwid.widget.Widget):
         if view is not self._transaction_view or not self._transaction_view.has_focus():
             return
 
-        if self._suppress_transaction_commit_sync:
+        if self._transaction_view.suppressing_commit_sync:
             return
 
         self.send_commit_sync(movement_alignment=movement_alignment)
@@ -1298,7 +1270,7 @@ class Top(urwid.widget.Widget):
         if view is not self._transaction_view or not self._transaction_view.has_focus():
             return
 
-        if self._suppress_transaction_commit_sync:
+        if self._transaction_view.suppressing_commit_sync:
             return
 
         self.send_commit_sync(focused_row_key, movement_alignment=movement_alignment)

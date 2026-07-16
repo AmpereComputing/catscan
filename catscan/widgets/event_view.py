@@ -537,6 +537,12 @@ class EventView(urwid.WidgetWrap, View):
         super().update_stream_data(stream_data)
         self.update_rows()
 
+    def start_commit_sync(self, commit_event: str, commit_data_name: str) -> None:
+        pass
+
+    def stop_commit_sync(self) -> None:
+        pass
+
     def update_state(self, new_state: CatscanState) -> bool:
         if not super().update_state(new_state):
             return False
