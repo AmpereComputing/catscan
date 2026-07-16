@@ -255,6 +255,67 @@ class TestCommitSync(unittest.TestCase):
         syncer.stop()
 
 
+class TestCommitPushoutMovements(unittest.TestCase):
+    def make_syncer(self, my_pushout_index, other_pushout_index):
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            syncer = CommitSyncer(tmpfile.name, lambda: None, lambda: None, lambda _state: None)
+
+        syncer.my.pushout_index = my_pushout_index
+        syncer.other.pushout_index = other_pushout_index
+        self.addCleanup(syncer.stop)
+        return syncer
+
+    def test_excess_pushout_debounces_split_cycle_difference(self):
+        syncer = self.make_syncer(
+            {
+                1: 9,
+                2: 8,
+                3: 9,
+                4: 11,
+                5: 10,
+            },
+            {
+                1: 10,
+                2: 7,
+                3: 8,
+                4: 9,
+                5: 9,
+            },
+        )
+
+        movements = syncer.compute_commit_pushout_movements()
+
+        self.assertEqual(movements.excess_pushout, {3: 1, 4: 2, 5: 1})
+        self.assertEqual(movements.cumulative_pushout_movement, {})
+
+    def test_cumulative_pushout_movement_tracks_threshold_crossings(self):
+        syncer = self.make_syncer(
+            {
+                1: 10,
+                2: 8,
+                3: 17,
+            },
+            {
+                1: 0,
+                2: 0,
+                3: 0,
+            },
+        )
+
+        movements = syncer.compute_commit_pushout_movements()
+
+        self.assertEqual(movements.excess_pushout, {1: 10, 2: 8, 3: 17})
+        self.assertEqual(movements.cumulative_pushout_movement, {2: 2, 3: 17})
+
+    def test_missing_pushout_indexes_produce_no_movements(self):
+        syncer = self.make_syncer({}, {1: 1})
+
+        movements = syncer.compute_commit_pushout_movements()
+
+        self.assertEqual(movements.excess_pushout, {})
+        self.assertEqual(movements.cumulative_pushout_movement, {})
+
+
 class TestCommitSyncSendIfChanged(unittest.TestCase):
     def make_syncer(self):
         with tempfile.NamedTemporaryFile() as tmpfile:

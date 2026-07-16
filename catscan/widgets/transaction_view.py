@@ -4,6 +4,9 @@
 from collections.abc import Callable
 from typing import Any, Literal
 
+from perf_streams.event_stream import Event
+
+from catscan.commit_sync import CommitSyncer
 from catscan.data import EventStreamDataTransactionView, TransactionEventData
 from catscan.widgets.event_row import EventRow
 from catscan.widgets.event_view import EventView
@@ -66,7 +69,8 @@ class TransactionView(EventView):
             return max(len(str(t.name)) + t.level for t in self.stream_data.transaction_event_rows.values()) + 3
         return 3
 
-    def start_commit_sync(self, commit_event: str, commit_data_name: str) -> None:
+    def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        super().start_commit_sync(commit_syncer, commit_event, commit_data_name)
         self._commit_sync_candidates_by_row = {}
         self._commit_sync_row_by_index = {}
         for txid, transaction_row in self.stream_data.transaction_event_rows.items():
@@ -78,8 +82,10 @@ class TransactionView(EventView):
                     self._commit_sync_row_by_index[sync_index] = txid
             if candidates:
                 self._commit_sync_candidates_by_row[txid] = candidates
+        return []
 
     def stop_commit_sync(self) -> None:
+        super().stop_commit_sync()
         self._commit_sync_candidates_by_row = {}
         self._commit_sync_row_by_index = {}
         self._suppress_commit_sync = False

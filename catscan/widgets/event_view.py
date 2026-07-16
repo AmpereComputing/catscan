@@ -9,6 +9,7 @@ from typing import Any, Literal
 import urwid
 from perf_streams.event_stream import Event
 
+from catscan.commit_sync import CommitSyncer
 from catscan.data import EventStreamData, EventStreamDataEventView, EventStreamDataView
 from catscan.state import CatscanState, Selection
 from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents
@@ -433,6 +434,8 @@ class EventView(urwid.WidgetWrap, View):
         self._last_top_visible_position = None
         self._last_focused_row_key = None
         self._event_row_positions: dict[str | int, int] = {}
+        self._commit_sync_event: str | None = None
+        self._commit_sync_data_name: str | None = None
 
         View.__init__(self, name, state, stream_data)
         self.update_stream_data(stream_data)
@@ -537,11 +540,14 @@ class EventView(urwid.WidgetWrap, View):
         super().update_stream_data(stream_data)
         self.update_rows()
 
-    def start_commit_sync(self, commit_event: str, commit_data_name: str) -> None:
-        pass
+    def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        self._commit_sync_event = commit_event
+        self._commit_sync_data_name = commit_data_name
+        return []
 
     def stop_commit_sync(self) -> None:
-        pass
+        self._commit_sync_event = None
+        self._commit_sync_data_name = None
 
     def commit_sync_index_candidates(self) -> list[int]:
         return []

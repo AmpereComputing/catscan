@@ -1011,29 +1011,28 @@ class Top(urwid.widget.Widget):
             self.add_message(f"  {row.decode()}")
 
     def start_commit_sync(self) -> None:
-        if self._commit_sync_view_mode() == DataView.RESOURCE:
-            self.saved_stream_data = self.stream_data
+        pushout_events = []
+        commit_sync_view_mode = self._commit_sync_view_mode()
 
-            pushout_events = self.commit_syncer.generate_commit_pushout_events(
-                self.stream_data.event_rows[self.commit_sync_event],
-                self.commit_sync_data_name,
-                next_event_id=self.stream_data.max_event_id + 1,
-                ps_per_cycle=self.state.ps_per_cycle,
+        for view in self._event_views():
+            pushout_events.extend(
+                view.start_commit_sync(self.commit_syncer, self.commit_sync_event, self.commit_sync_data_name)
             )
 
-            new_stream_data = self.stream_data.copy_with_events(
-                pushout_events,
-                insert_after=self.commit_sync_event,
-            )
+        if commit_sync_view_mode == DataView.RESOURCE:
+            new_stream_data = self.stream_data
+            if pushout_events:
+                self.saved_stream_data = self.stream_data
+                new_stream_data = self.stream_data.copy_with_events(
+                    pushout_events,
+                    insert_after=self.commit_sync_event,
+                )
 
             self.update_stream_data(
                 new_stream_data,
                 external_column_width=self.commit_syncer.other_column_header_width,
                 zoom_to_extents=False,
             )
-
-        for view in self._event_views():
-            view.start_commit_sync(self.commit_sync_event, self.commit_sync_data_name)
 
         self.eval_commands(self.init_sync_commands)
 

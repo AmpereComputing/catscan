@@ -15,7 +15,6 @@ from threading import Thread
 from typing import Literal, NamedTuple
 
 import urwid
-from perf_streams.event_stream import Event
 
 from catscan.data import CatscanEvent, DataView, EventData
 
@@ -40,7 +39,7 @@ def build_pushout_index(commit_index: dict[int, int], ps_per_cycle: int) -> dict
 
 
 # This "constant" defines the bounds used to "debounce" changes in cumulative
-# commit pushout. The logic in CommitSyncer.generate_commit_pushout_events
+# commit pushout. The logic in CommitSyncer.compute_commit_pushout_movements
 # below keeps track of the cumulative commit pushout, and tracks it with a
 # value that is the "debounced" cumulative commit pushout. Whenever the real
 # cumulative pushout becomes farther than CUMULATIVE_PUSHOUT_BOUNDS cycles from
@@ -70,6 +69,12 @@ class PushoutEvent(CatscanEvent):
             "other_pushout": other_pushout,
             "excess_pushout": my_pushout - other_pushout,
         }
+
+
+@dataclass
+class CommitPushoutMovements:
+    excess_pushout: dict[int, int]
+    cumulative_pushout_movement: dict[int, int]
 
 
 class CommitSyncState(NamedTuple):
@@ -301,20 +306,19 @@ class CommitSyncer:
                 logging.info("Stopping commit sync. Other end of FIFO presumed closed.")
                 self.stop()
 
-    def generate_commit_pushout_events(
-        self,
-        event_row: EventData,
-        commit_sync_data_name: str,
-        next_event_id: int,
-        ps_per_cycle: int,
-    ) -> list[Event]:
+    def compute_commit_pushout_movements(self) -> CommitPushoutMovements:
         # Generate a dictionary keyed by sync_index for each commit which shows
         # "real" excess commit pushout. We don't count commit pushout as "real"
         # if it is a single cycle and the previous nonzero pushout was -1
         # cycles, because this likely means the commits are just split across
         # cycles slightly differently.
+        if not self.my.pushout_index or not self.other.pushout_index:
+            return CommitPushoutMovements({}, {})
+
         min_sync_index = max(min(self.my.pushout_index.keys()), min(self.other.pushout_index.keys()))
         max_sync_index = min(max(self.my.pushout_index.keys()), max(self.other.pushout_index.keys()))
+        if min_sync_index > max_sync_index:
+            return CommitPushoutMovements({}, {})
 
         excess_pushout = {}
         cumulative_pushout_movement = {}
@@ -340,37 +344,7 @@ class CommitSyncer:
                     )
                     cumulative_pushout_center = cumulative_pushout - CUMULATIVE_PUSHOUT_BOUNDS
 
-        pushout_events = []
-
-        def gen_pushout_events(commit_evt: Event, event_name: str, excess_pushout: int) -> None:
-            nonlocal next_event_id
-            for i in range(-excess_pushout, 0):
-                time = commit_evt.time + i * ps_per_cycle
-                pushout_evt = PushoutEvent(
-                    event_name,
-                    next_event_id,
-                    time,
-                    commit_evt.data["txid"],
-                    commit_evt.data[commit_sync_data_name],
-                    self.my.pushout_index[sync_index],
-                    self.other.pushout_index[sync_index],
-                )
-                next_event_id += 1
-                pushout_events.append(pushout_evt)
-
-        group_prefix = event_row.group
-        for commit_evt in event_row[:]:
-            if commit_sync_data_name not in commit_evt.data:
-                continue
-            sync_index = commit_evt.data[commit_sync_data_name]
-            if sync_index in excess_pushout:
-                gen_pushout_events(commit_evt, f"{group_prefix}.excess_commit_pushout", excess_pushout[sync_index])
-            if sync_index in cumulative_pushout_movement:
-                gen_pushout_events(
-                    commit_evt, f"{group_prefix}.debounced_cumulative_pushout", cumulative_pushout_movement[sync_index]
-                )
-
-        return pushout_events
+        return CommitPushoutMovements(excess_pushout, cumulative_pushout_movement)
 
     def stop(self) -> None:
         if self.stopped:

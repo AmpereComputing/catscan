@@ -8,7 +8,7 @@ from types import SimpleNamespace
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
-from catscan.commit_sync import CommitSyncState
+from catscan.commit_sync import CommitSyncer, CommitSyncState
 from catscan.data import DataView, get_event_data
 from catscan.events import trace_events
 from catscan.events.mapping import Mapper
@@ -42,13 +42,14 @@ class DummyCommitSyncer:
     def __init__(
         self,
         *,
+        my_pushout_index=None,
         other_commit_index=None,
         other_pushout_index=None,
         view_mode=DataView.TRANSACTIONS,
         other_view_mode=DataView.RESOURCE,
     ):
         self.syncing = True
-        self.my = SimpleNamespace(view_mode=view_mode)
+        self.my = SimpleNamespace(view_mode=view_mode, pushout_index=my_pushout_index or {})
         self.other = SimpleNamespace(
             commit_index=other_commit_index or {},
             pushout_index=other_pushout_index or {},
@@ -80,6 +81,9 @@ class DummyCommitSyncer:
             if self.other_has_sync_index(sync_index):
                 return sync_index
         return None
+
+    def compute_commit_pushout_movements(self):
+        return CommitSyncer.compute_commit_pushout_movements(self)
 
     def _sent_anchor_matches(self, sync_state):
         if sync_state.sync_index is None:
@@ -151,6 +155,11 @@ class DummyCommitSyncer:
         if sync_state.sync_index is not None:
             self._last_sent_anchor_state = sync_state
         return True
+
+
+class DummyMainLoop:
+    def draw_screen(self):
+        pass
 
 
 class TransactionSyncDataTest(CatscanDataTest):
@@ -425,6 +434,51 @@ class TestEventViewViewport(TransactionSyncDataTest):
         self.assertEqual(view.top_visible_row_key(), "core.commit")
         self.assertEqual(events[-1], "core.commit")
 
+    def test_resource_commit_sync_returns_pushout_events(self):
+        view, _events = self.make_resource_view()
+        syncer = DummyCommitSyncer(
+            my_pushout_index={20: 4},
+            other_pushout_index={20: 1},
+            view_mode=DataView.RESOURCE,
+        )
+
+        pushout_events = view.start_commit_sync(syncer, "core.commit", "core.inum")
+
+        self.assertEqual([event.name for event in pushout_events], ["Events.excess_commit_pushout"] * 3)
+        self.assertEqual([event.time for event in pushout_events], [20, 30, 40])
+        self.assertEqual(
+            [event.id for event in pushout_events],
+            list(range(view.stream_data.max_event_id + 1, view.stream_data.max_event_id + 4)),
+        )
+        self.assertEqual(
+            [event.data for event in pushout_events],
+            [
+                {
+                    "txid": self.txids[1],
+                    "sync_index": 20,
+                    "pushout": 4,
+                    "other_pushout": 1,
+                    "excess_pushout": 3,
+                },
+            ]
+            * 3,
+        )
+        self.assertEqual(view.commit_sync_index_candidates(), [10, 11, 20, 40, 41, 50])
+
+    def test_subset_resource_commit_sync_opts_out(self):
+        view, _events = self.make_resource_view(SubsetResourceView, max_rows=2)
+        view.add_event("core.commit")
+        syncer = DummyCommitSyncer(
+            my_pushout_index={20: 4},
+            other_pushout_index={20: 1},
+            view_mode=DataView.RESOURCE,
+        )
+
+        pushout_events = view.start_commit_sync(syncer, "core.commit", "core.inum")
+
+        self.assertEqual(pushout_events, [])
+        self.assertEqual(view.commit_sync_index_candidates(), [])
+
 
 class TestTopTransactionCommitSync(TransactionSyncDataTest):
     def make_top(self, size=(120, 4), view=DataView.TRANSACTIONS, start_commit_sync=True):
@@ -434,8 +488,9 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         top.update_stream_data(stream_data)
         top.render(size, focus=True)
         if start_commit_sync:
+            commit_syncer = DummyCommitSyncer(other_commit_index=top.commit_sync_index)
             for event_view in top._event_views():
-                event_view.start_commit_sync(top.commit_sync_event, top.commit_sync_data_name)
+                event_view.start_commit_sync(commit_syncer, top.commit_sync_event, top.commit_sync_data_name)
         return top
 
     def test_focused_row_with_one_shared_commit_anchors_correctly(self):
@@ -536,8 +591,13 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertIsNone(top._transaction_view.commit_sync_row(10))
         self.assertEqual(top._transaction_view.commit_sync_index_candidates(), [])
 
-        top._transaction_view.start_commit_sync(top.commit_sync_event, top.commit_sync_data_name)
+        anchors = top._transaction_view.start_commit_sync(
+            DummyCommitSyncer(other_commit_index=top.commit_sync_index),
+            top.commit_sync_event,
+            top.commit_sync_data_name,
+        )
 
+        self.assertEqual(anchors, [])
         self.assertEqual(top._transaction_view.commit_sync_row(10), self.txids[0])
         self.assertEqual(top._transaction_view.commit_sync_index_candidates(), [10, 11])
 
@@ -815,6 +875,30 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertIsNone(top.commit_syncer.sent[0].chars_rel_to_start)
         self.assertEqual(top.commit_syncer.sent[0].cycles_per_char, Fraction(1, 8))
         self.assertTrue(top.commit_syncer.sent[0].expand_rows)
+
+    def test_resource_start_commit_sync_without_pushouts_does_not_save_stream_data(self):
+        top = self.make_top(view=DataView.RESOURCE, start_commit_sync=False)
+        top.main_loop = DummyMainLoop()
+        top.commit_syncer = DummyCommitSyncer(view_mode=DataView.RESOURCE)
+
+        top.start_commit_sync()
+
+        self.assertFalse(hasattr(top, "saved_stream_data"))
+
+    def test_resource_start_commit_sync_with_pushouts_saves_stream_data(self):
+        top = self.make_top(view=DataView.RESOURCE, start_commit_sync=False)
+        top.main_loop = DummyMainLoop()
+        original_stream_data = top.stream_data
+        top.commit_syncer = DummyCommitSyncer(
+            my_pushout_index={20: 4},
+            other_pushout_index={20: 1},
+            view_mode=DataView.RESOURCE,
+        )
+
+        top.start_commit_sync()
+
+        self.assertIs(top.saved_stream_data, original_stream_data)
+        self.assertIsNot(top.stream_data, original_stream_data)
 
     def test_remote_transaction_row_scroll_does_not_echo(self):
         top = self.make_top(size=(120, 2))
