@@ -39,8 +39,16 @@ class Args:
 
 
 class DummyCommitSyncer:
-    def __init__(self, *, other_commit_index=None, other_pushout_index=None, other_view_mode=DataView.RESOURCE):
+    def __init__(
+        self,
+        *,
+        other_commit_index=None,
+        other_pushout_index=None,
+        view_mode=DataView.TRANSACTIONS,
+        other_view_mode=DataView.RESOURCE,
+    ):
         self.syncing = True
+        self.my = SimpleNamespace(view_mode=view_mode)
         self.other = SimpleNamespace(
             commit_index=other_commit_index or {},
             pushout_index=other_pushout_index or {},
@@ -49,9 +57,45 @@ class DummyCommitSyncer:
         )
         self.sent = []
         self.failure_message = None
+        self._last_sent_sync_state = None
+        self._last_sent_anchor_state = None
+
+    @property
+    def view_mode(self):
+        return self.my.view_mode
+
+    @property
+    def other_view_mode(self):
+        return self.other.view_mode
 
     def send(self, sync_state):
         self.sent.append(sync_state)
+        self._last_sent_sync_state = sync_state
+        if sync_state.sync_index is not None:
+            self._last_sent_anchor_state = sync_state
+
+    def _sync_state_matches(self, sync_state, previous_sync_state, field_names=None):
+        if previous_sync_state is None:
+            return False
+
+        last_values = previous_sync_state._asdict()
+        values = sync_state._asdict()
+        field_names = field_names or tuple(values)
+        return all(values[name] is None or last_values[name] == values[name] for name in field_names)
+
+    def sent_anchor_matches(self, sync_state):
+        return self._sync_state_matches(
+            sync_state,
+            self._last_sent_anchor_state,
+            ("sync_index", "chars_rel_to_start", "movement_alignment"),
+        )
+
+    def send_if_changed(self, sync_state):
+        if self._sync_state_matches(sync_state, self._last_sent_sync_state):
+            return False
+
+        self.send(sync_state)
+        return True
 
 
 class TransactionSyncDataTest(CatscanDataTest):
@@ -385,6 +429,16 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertIsNone(top.commit_syncer.sent[0].sync_index)
         self.assertIsNone(top.commit_syncer.sent[0].chars_rel_to_start)
 
+    def test_unanchored_transaction_row_duplicate_display_state_is_suppressed(self):
+        top = self.make_top()
+        top.commit_syncer = DummyCommitSyncer(other_commit_index={999: 999}, other_view_mode=DataView.TRANSACTIONS)
+
+        top.send_commit_sync(self.txids[0])
+        top.send_commit_sync(self.txids[1])
+
+        self.assertEqual(len(top.commit_syncer.sent), 1)
+        self.assertIsNone(top.commit_syncer.sent[0].sync_index)
+
     def test_zoom_change_on_same_transaction_row_sends_again(self):
         top = self.make_top()
         top.commit_syncer = DummyCommitSyncer(other_commit_index={10: 10, 11: 20})
@@ -493,7 +547,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
     def test_resource_view_receives_transaction_row_sync_as_commit_time(self):
         top = self.make_top(view=DataView.RESOURCE)
-        top.commit_syncer = DummyCommitSyncer(other_view_mode=DataView.TRANSACTIONS)
+        top.commit_syncer = DummyCommitSyncer(view_mode=DataView.RESOURCE, other_view_mode=DataView.TRANSACTIONS)
         sync_cycles_per_char = Fraction(1, 8)
         sync_expand_rows = not top.state.expand_rows
 
@@ -621,6 +675,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         sender.commit_syncer = DummyCommitSyncer(
             other_commit_index=receiver.commit_sync_index,
             other_pushout_index=receiver.pushout_index,
+            view_mode=DataView.RESOURCE,
             other_view_mode=DataView.TRANSACTIONS,
         )
         receiver.commit_syncer = DummyCommitSyncer(other_view_mode=DataView.RESOURCE)

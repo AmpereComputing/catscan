@@ -1,6 +1,7 @@
 # Copyright (c) 2024-2025 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import io
 import json
 import tempfile
 import time
@@ -241,6 +242,123 @@ class TestCommitSync(unittest.TestCase):
         self.assertEqual(received, [sync_state])
         syncer.outgoing = None
         syncer.stop()
+
+
+class TestCommitSyncSendIfChanged(unittest.TestCase):
+    def make_syncer(self):
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            syncer = CommitSyncer(tmpfile.name, lambda: None, lambda: None, lambda _state: None)
+
+        syncer.initialized = True
+        syncer.stopped = False
+        syncer.outgoing = io.StringIO()
+        self.addCleanup(syncer.stop)
+        return syncer
+
+    def test_send_if_changed_sends_first_state(self):
+        syncer = self.make_syncer()
+        sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+
+        self.assertTrue(syncer.send_if_changed(sync_state))
+
+        self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 1)
+
+    def test_send_if_changed_suppresses_duplicate_state(self):
+        syncer = self.make_syncer()
+        sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+
+        syncer.send_if_changed(sync_state)
+        self.assertFalse(syncer.send_if_changed(sync_state))
+
+        self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 1)
+
+    def test_send_if_changed_sends_changed_state(self):
+        syncer = self.make_syncer()
+        first_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        second_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 2),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+
+        syncer.send_if_changed(first_sync_state)
+        self.assertTrue(syncer.send_if_changed(second_sync_state))
+
+        self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 2)
+
+    def test_send_if_changed_ignores_none_fields(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        display_sync_state = CommitSyncState(
+            sync_index=None,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=None,
+        )
+
+        syncer.send_if_changed(anchored_sync_state)
+        self.assertFalse(syncer.send_if_changed(display_sync_state))
+
+        self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 1)
+
+    def test_sent_anchor_matches_ignores_display_state(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        same_anchor_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 2),
+            expand_rows=True,
+            chars_rel_to_start=0,
+        )
+
+        syncer.send(anchored_sync_state)
+
+        self.assertTrue(syncer.sent_anchor_matches(same_anchor_sync_state))
+
+    def test_sent_anchor_matches_detects_different_anchor(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        different_anchor_sync_state = CommitSyncState(
+            sync_index=11,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+
+        syncer.send(anchored_sync_state)
+
+        self.assertFalse(syncer.sent_anchor_matches(different_anchor_sync_state))
 
 
 class TestCommitSyncHandshake(unittest.TestCase):
