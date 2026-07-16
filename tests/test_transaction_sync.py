@@ -792,10 +792,29 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         sender.send_commit_sync()
 
         self.assertEqual(len(sender.commit_syncer.sent), 1)
+        self.assertEqual(sender.commit_syncer.sent[0].sync_index, 40)
+        self.assertEqual(sender.commit_syncer.sent[0].chars_rel_to_start, 0)
         receiver.receive_commit_sync(sender.commit_syncer.sent[0])
         self.assertEqual(receiver._transaction_view.top_visible_row_key(), self.txids[3])
         self.assertEqual(receiver.state.cycles_per_char, sender.state.cycles_per_char)
         self.assertEqual(receiver.state.expand_rows, sender.state.expand_rows)
+
+    def test_resource_sender_without_shared_anchor_sends_display_state(self):
+        top = self.make_top(view=DataView.RESOURCE)
+        top.update_state(top.state.copy_with(cycles_per_char=Fraction(1, 8), expand_rows=True))
+        top.commit_syncer = DummyCommitSyncer(
+            other_commit_index={999: 999},
+            view_mode=DataView.RESOURCE,
+            other_view_mode=DataView.RESOURCE,
+        )
+
+        top.send_commit_sync()
+
+        self.assertEqual(len(top.commit_syncer.sent), 1)
+        self.assertIsNone(top.commit_syncer.sent[0].sync_index)
+        self.assertIsNone(top.commit_syncer.sent[0].chars_rel_to_start)
+        self.assertEqual(top.commit_syncer.sent[0].cycles_per_char, Fraction(1, 8))
+        self.assertTrue(top.commit_syncer.sent[0].expand_rows)
 
     def test_remote_transaction_row_scroll_does_not_echo(self):
         top = self.make_top(size=(120, 2))

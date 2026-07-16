@@ -266,6 +266,11 @@ class Top(urwid.widget.Widget):
             return DataView.RESOURCE
         return DataView.TRANSACTIONS
 
+    def _commit_sync_view(self, view_mode: DataView) -> EventView:
+        if view_mode == DataView.TRANSACTIONS:
+            return self._transaction_view
+        return self._resource_view
+
     def _get_data_view_from_views(self, views: list[str] | None = None) -> EventView:
         # NOTE: currently only returns a single data-view as multiple are not
         # supported yet and not clear how they will be handled (if at all)
@@ -1068,30 +1073,25 @@ class Top(urwid.widget.Widget):
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
-        if self._commit_sync_view_mode() == DataView.TRANSACTIONS:
-            anchor_sync_index = self.commit_syncer.first_other_sync_index(
-                self._transaction_view.commit_sync_index_candidates()
-            )
-
-            if anchor_sync_index is not None:
-                sync_state = CommitSyncState(
-                    sync_index=anchor_sync_index,
-                    cycles_per_char=self.state.cycles_per_char,
-                    expand_rows=self.state.expand_rows,
-                    chars_rel_to_start=0,
-                    movement_alignment=movement_alignment,
-                )
-            else:
-                sync_state = self._commit_sync_display_state(movement_alignment=movement_alignment)
-            self.commit_syncer.send_if_changed(sync_state)
-            return
-
+        view_mode = self._commit_sync_view_mode()
         anchor_sync_index = self.commit_syncer.first_other_sync_index(
-            self._resource_view.commit_sync_index_candidates()
+            self._commit_sync_view(view_mode).commit_sync_index_candidates()
         )
+
         if anchor_sync_index is None:
             logging.info("Did not send sync because no shared instruction commit was found")
-            self.commit_syncer.send_if_changed(self._commit_sync_display_state())
+            self.commit_syncer.send_if_changed(self._commit_sync_display_state(movement_alignment=movement_alignment))
+            return
+
+        if view_mode == DataView.TRANSACTIONS:
+            sync_state = CommitSyncState(
+                sync_index=anchor_sync_index,
+                cycles_per_char=self.state.cycles_per_char,
+                expand_rows=self.state.expand_rows,
+                chars_rel_to_start=0,
+                movement_alignment=movement_alignment,
+            )
+            self.commit_syncer.send_if_changed(sync_state)
             return
 
         offset_chars = round(
