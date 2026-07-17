@@ -534,12 +534,8 @@ class Top(urwid.widget.Widget):
 
         if new_state != self.state:
             old_state = self.state
-            should_send_commit_sync = not external_sync and (
-                new_state.ps_per_cycle != old_state.ps_per_cycle
-                or new_state.column_header_width != old_state.column_header_width
-                or new_state.cycles_per_char != old_state.cycles_per_char
-                or new_state.expand_rows != old_state.expand_rows
-                or new_state.start_ps != old_state.start_ps
+            should_send_commit_sync = not external_sync and not old_state.compare(
+                new_state, "ps_per_cycle", "column_header_width", "cycles_per_char", "expand_rows", "start_ps"
             )
 
             self.state = new_state
@@ -1062,9 +1058,8 @@ class Top(urwid.widget.Widget):
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
-        view_mode = self.primary_view
         anchor_sync_index = self.commit_syncer.first_other_sync_index(
-            self._commit_sync_view(view_mode).commit_sync_index_candidates()
+            self._commit_sync_view(self.primary_view).commit_sync_index_candidates()
         )
 
         if anchor_sync_index is None:
@@ -1072,7 +1067,7 @@ class Top(urwid.widget.Widget):
             self.commit_syncer.send_if_changed(self._commit_sync_display_state(movement_alignment=movement_alignment))
             return
 
-        if view_mode == DataView.TRANSACTIONS:
+        if self.primary_view == DataView.TRANSACTIONS:
             sync_state = CommitSyncState(
                 sync_index=anchor_sync_index,
                 cycles_per_char=self.state.cycles_per_char,

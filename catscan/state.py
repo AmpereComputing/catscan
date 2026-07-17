@@ -248,3 +248,6 @@ class CatscanState(NamedTuple):
                         raise TypeError(f"marked_events values must be of type Event, found {type(event)}")
 
         return self._replace(**kwargs)
+
+    def compare(self, other: "CatscanState", *attributes: str) -> bool:
+        return all(getattr(self, attr) == getattr(other, attr) for attr in attributes)
