@@ -59,7 +59,7 @@ class TestResourceViewViewport(TransactionSyncDataTest):
             [
                 {
                     "txid": self.txids[1],
-                    "sync_index": 20,
+                    "core.inum": 20,
                     "pushout": 4,
                     "other_pushout": 1,
                     "excess_pushout": 3,

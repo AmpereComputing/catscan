@@ -57,14 +57,22 @@ REFRESH_RATE = 1 / 60  # 60Hz
 
 class PushoutEvent(CatscanEvent):
     def __init__(
-        self, name: str, _id: int, time: int, txid: int, sync_index: int, my_pushout: int, other_pushout: int
+        self,
+        name: str,
+        _id: int,
+        time: int,
+        txid: int,
+        commit_data_name: str,
+        sync_index: int,
+        my_pushout: int,
+        other_pushout: int,
     ) -> None:
         self.id = _id
         self.time = time
         self.name = name
         self.data = {
             "txid": txid,
-            "sync_index": sync_index,
+            commit_data_name: sync_index,
             "pushout": my_pushout,
             "other_pushout": other_pushout,
             "excess_pushout": my_pushout - other_pushout,

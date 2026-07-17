@@ -129,6 +129,7 @@ class ResourceView(EventView):
                         next_event_id,
                         commit_evt.time + i * self.state.ps_per_cycle,
                         commit_evt.data["txid"],
+                        commit_data_name,
                         sync_index,
                         commit_syncer.my.pushout_index[sync_index],
                         commit_syncer.other.pushout_index[sync_index],
