@@ -3,6 +3,7 @@
 
 import io
 import json
+import os
 import tempfile
 import time
 import unittest
@@ -254,6 +255,83 @@ class TestCommitSync(unittest.TestCase):
         syncer.outgoing = None
         syncer.stop()
 
+    def test_receive_display_only_delta_merges_with_latest_state(self):
+        received = []
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            syncer = CommitSyncer(tmpfile.name, lambda: None, lambda: None, received.append)
+
+        syncer.initialized = True
+        syncer.stopped = False
+        syncer.outgoing = object()
+        self.addCleanup(lambda: self.cleanup_inert_syncer(syncer))
+
+        full_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=7,
+            movement_alignment="after",
+        )
+        display_delta = CommitSyncState(
+            cycles_per_char=Fraction(1, 2),
+            expand_rows=True,
+        )
+
+        syncer.receive(full_sync_state)
+        syncer.receive(display_delta)
+
+        merged_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 2),
+            expand_rows=True,
+            chars_rel_to_start=7,
+            movement_alignment="after",
+        )
+        self.assertEqual(received, [full_sync_state, merged_sync_state])
+        self.assertEqual(syncer.latest_sync_state, merged_sync_state)
+
+    def test_main_loop_dispatch_merges_deltas_before_callback_runs(self):
+        received = []
+        with tempfile.NamedTemporaryFile() as tmpfile:
+            syncer = CommitSyncer(tmpfile.name, lambda: None, lambda: None, received.append)
+
+        read_fd, write_fd = os.pipe()
+        self.addCleanup(os.close, read_fd)
+        self.addCleanup(os.close, write_fd)
+        self.addCleanup(lambda: self.cleanup_inert_syncer(syncer))
+        syncer.main_loop = object()
+        syncer.notifier = write_fd
+
+        syncer._dispatch_received_sync_state(
+            CommitSyncState(
+                sync_index=10,
+                cycles_per_char=Fraction(1, 1),
+                expand_rows=False,
+                chars_rel_to_start=7,
+                movement_alignment="after",
+            )
+        )
+        syncer._dispatch_received_sync_state(CommitSyncState(expand_rows=True))
+        syncer._dispatch_received_sync_state(CommitSyncState(cycles_per_char=Fraction(1, 2)))
+
+        self.assertEqual(received, [])
+        self.assertEqual(
+            syncer.latest_sync_state,
+            CommitSyncState(
+                sync_index=10,
+                cycles_per_char=Fraction(1, 2),
+                expand_rows=True,
+                chars_rel_to_start=7,
+                movement_alignment="after",
+            ),
+        )
+
+    def cleanup_inert_syncer(self, syncer):
+        syncer.outgoing = None
+        syncer.main_loop = None
+        syncer.notifier = None
+        syncer.stop()
+
 
 class TestCommitPushoutMovements(unittest.TestCase):
     def make_syncer(self, my_pushout_index, other_pushout_index):
@@ -459,6 +537,62 @@ class TestCommitSyncSendIfChanged(unittest.TestCase):
         self.assertFalse(syncer.send_if_changed(display_sync_state))
 
         self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 1)
+
+    def test_unanchored_state_invalidates_anchor_cache_without_clear_message(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        unanchored_sync_state = CommitSyncState(
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+        )
+
+        syncer.send_if_changed(anchored_sync_state)
+        self.assertFalse(syncer.send_if_changed(unanchored_sync_state))
+
+        self.assertEqual(len(syncer.outgoing.getvalue().splitlines()), 1)
+        self.assertIsNone(syncer._last_sent_anchor_state)
+
+    def test_returning_to_same_anchor_after_unanchored_state_sends_anchor_again(self):
+        syncer = self.make_syncer()
+        anchored_sync_state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=0,
+        )
+        unanchored_sync_state = CommitSyncState(
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+        )
+
+        syncer.send_if_changed(anchored_sync_state)
+        syncer.send_if_changed(unanchored_sync_state)
+        self.assertTrue(syncer.send_if_changed(anchored_sync_state))
+        messages = [json.loads(line) for line in syncer.outgoing.getvalue().splitlines()]
+
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(messages[1]["sync_index"], 10)
+        self.assertEqual(messages[1]["chars_rel_to_start"], 0)
+
+    def test_duplicate_display_only_unanchored_state_is_suppressed(self):
+        syncer = self.make_syncer()
+        unanchored_sync_state = CommitSyncState(
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+        )
+
+        self.assertTrue(syncer.send_if_changed(unanchored_sync_state))
+        self.assertFalse(syncer.send_if_changed(unanchored_sync_state))
+        messages = [json.loads(line) for line in syncer.outgoing.getvalue().splitlines()]
+
+        self.assertEqual(len(messages), 1)
+        self.assertNotIn("sync_index", messages[0])
+        self.assertNotIn("chars_rel_to_start", messages[0])
 
     def test_sent_anchor_matches_ignores_display_state(self):
         syncer = self.make_syncer()

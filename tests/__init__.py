@@ -130,6 +130,8 @@ class DummyCommitSyncer:
         self._last_sent_sync_state = sync_state
         if sync_state.sync_index is not None:
             self._last_sent_anchor_state = sync_state
+        else:
+            self._last_sent_anchor_state = None
         return True
 
     def _sync_state_matches(self, sync_state, previous_sync_state, field_names=None):
@@ -147,11 +149,15 @@ class DummyCommitSyncer:
     def send_if_changed(self, sync_state):
         delta_sync_state = self._delta_sync_state(sync_state)
         if not any(value is not None for value in delta_sync_state):
+            if sync_state.sync_index is None:
+                self._last_sent_anchor_state = None
             return False
         self.sent.append(delta_sync_state)
         self._last_sent_sync_state = sync_state
         if sync_state.sync_index is not None:
             self._last_sent_anchor_state = sync_state
+        else:
+            self._last_sent_anchor_state = None
         return True
 
 

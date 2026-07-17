@@ -124,6 +124,17 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
         )
 
 
+def _merge_sync_state_delta(
+    previous_sync_state: CommitSyncState | None, sync_state: CommitSyncState
+) -> CommitSyncState:
+    if previous_sync_state is None:
+        return sync_state
+
+    return previous_sync_state._replace(
+        **{name: value for name, value in sync_state._asdict().items() if value is not None}
+    )
+
+
 class CommitSyncer:
     def __init__(
         self,
@@ -405,6 +416,8 @@ class CommitSyncer:
         self._last_sent_sync_state = sync_state
         if sync_state.sync_index is not None:
             self._last_sent_anchor_state = sync_state
+        else:
+            self._last_sent_anchor_state = None
 
     def _sent_anchor_matches(self, sync_state: CommitSyncState) -> bool:
         if sync_state.sync_index is None:
@@ -493,15 +506,17 @@ class CommitSyncer:
 
         delta_sync_state = self._delta_sync_state(sync_state)
         if not self._sync_state_has_fields(delta_sync_state):
+            if sync_state.sync_index is None:
+                self._last_sent_anchor_state = None
             return False
 
         return self._write_sync_state(delta_sync_state, remembered_sync_state=sync_state)
 
     def _dispatch_received_sync_state(self, sync_state: CommitSyncState) -> None:
+        self.latest_sync_state = _merge_sync_state_delta(self.latest_sync_state, sync_state)
         if self.main_loop is None:
-            self.sync_callback(sync_state)
+            self.sync_callback(self.latest_sync_state)
         else:
-            self.latest_sync_state = sync_state
             # Required to wakeup/interrupt main loop
             os.write(self.notifier, b"u")
 
