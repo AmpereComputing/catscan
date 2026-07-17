@@ -134,6 +134,19 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(len(top.commit_syncer.sent), 1)
         self.assertIsNone(top.commit_syncer.sent[0].movement_alignment)
 
+    def test_transaction_sender_uses_primary_view(self):
+        top = self.make_top()
+        top.commit_syncer = DummyCommitSyncer(
+            other_commit_index=top.commit_sync_index,
+            view_mode=DataView.RESOURCE,
+        )
+
+        top.send_commit_sync()
+
+        self.assertEqual(len(top.commit_syncer.sent), 1)
+        self.assertEqual(top.commit_syncer.sent[0].sync_index, 10)
+        self.assertEqual(top.commit_syncer.sent[0].chars_rel_to_start, 0)
+
     def test_earliest_shared_commit_in_row_is_used(self):
         top = self.make_top()
         top._transaction_view.scroll_row_to_top(self.txids[0])

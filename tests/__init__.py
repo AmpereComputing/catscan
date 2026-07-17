@@ -276,7 +276,7 @@ class TransactionSyncDataTest(CatscanDataTest):
         top.update_stream_data(stream_data)
         top.render(size, focus=True)
         if start_commit_sync:
-            commit_syncer = DummyCommitSyncer(other_commit_index=top.commit_sync_index)
+            commit_syncer = DummyCommitSyncer(view_mode=view, other_commit_index=top.commit_sync_index)
             for event_view in top._event_views():
                 event_view.start_commit_sync(commit_syncer, top.commit_sync_event, top.commit_sync_data_name)
         return top

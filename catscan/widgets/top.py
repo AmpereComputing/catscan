@@ -88,6 +88,7 @@ class Top(urwid.widget.Widget):
     MAX_SIMULTANEOUS_TXID_HIGHLIGHTS = 32
 
     def __init__(self, args: Namespace):
+        self.primary_view = args.view
         self._infer_period = args.period is None
         self.state = CatscanState(
             has_focus=True,
@@ -158,7 +159,7 @@ class Top(urwid.widget.Widget):
             self.state, on_search=lambda args: self.command(f"search {args}"), on_command=self.command
         )
 
-        if args.view == DataView.TRANSACTIONS:
+        if self.primary_view == DataView.TRANSACTIONS:
             self.view_rows = RowViews(
                 self.state,
                 PrimarySplitEventView(
@@ -255,16 +256,6 @@ class Top(urwid.widget.Widget):
         elif isinstance(view, Views):
             for child_view in view.event_views:
                 yield from self._event_views(child_view)
-
-    def _commit_sync_view_mode(self) -> DataView:
-        if self.commit_syncer:
-            return self.commit_syncer.view_mode
-
-        try:
-            _ = self._transaction_view
-        except KeyError:
-            return DataView.RESOURCE
-        return DataView.TRANSACTIONS
 
     def _commit_sync_view(self, view_mode: DataView) -> EventView:
         if view_mode == DataView.TRANSACTIONS:
@@ -1012,14 +1003,13 @@ class Top(urwid.widget.Widget):
 
     def start_commit_sync(self) -> None:
         pushout_events = []
-        commit_sync_view_mode = self._commit_sync_view_mode()
 
         for view in self._event_views():
             pushout_events.extend(
                 view.start_commit_sync(self.commit_syncer, self.commit_sync_event, self.commit_sync_data_name)
             )
 
-        if commit_sync_view_mode == DataView.RESOURCE:
+        if self.primary_view == DataView.RESOURCE:
             new_stream_data = self.stream_data
             if pushout_events:
                 self.saved_stream_data = self.stream_data
@@ -1072,7 +1062,7 @@ class Top(urwid.widget.Widget):
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
-        view_mode = self._commit_sync_view_mode()
+        view_mode = self.primary_view
         anchor_sync_index = self.commit_syncer.first_other_sync_index(
             self._commit_sync_view(view_mode).commit_sync_index_candidates()
         )
@@ -1113,13 +1103,13 @@ class Top(urwid.widget.Widget):
         return DataView.RESOURCE
 
     def _transaction_view_position(self) -> tuple[str | int | None, str | int | None]:
-        if self._commit_sync_view_mode() != DataView.TRANSACTIONS:
+        if self.primary_view != DataView.TRANSACTIONS:
             return None, None
         return self._transaction_view.commit_sync_position()
 
     def _restore_transaction_view_position(self, position: tuple[str | int | None, str | int | None]) -> None:
         top_row_key, focused_row_key = position
-        if self._commit_sync_view_mode() != DataView.TRANSACTIONS or (top_row_key is None and focused_row_key is None):
+        if self.primary_view != DataView.TRANSACTIONS or (top_row_key is None and focused_row_key is None):
             return
 
         self._transaction_view.restore_commit_sync_position(position)
@@ -1153,7 +1143,7 @@ class Top(urwid.widget.Widget):
             return
 
         if sender_view_mode == DataView.TRANSACTIONS:
-            if self._commit_sync_view_mode() == DataView.RESOURCE:
+            if self.primary_view == DataView.RESOURCE:
                 if sync_state.sync_index not in self.commit_sync_index:
                     logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
                     self._apply_commit_sync_display_state(sync_state)
@@ -1189,7 +1179,7 @@ class Top(urwid.widget.Widget):
             self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
             return
 
-        if self._commit_sync_view_mode() == DataView.TRANSACTIONS:
+        if self.primary_view == DataView.TRANSACTIONS:
             transaction_row = self._transaction_view.commit_sync_row(sync_state.sync_index)
             if transaction_row is None:
                 logging.info(f"Received time sync_index not in transaction-row index: {sync_state.sync_index}")
@@ -1217,7 +1207,7 @@ class Top(urwid.widget.Widget):
         self._apply_commit_sync_display_state(sync_state, start_ps=new_start_ps)
 
     def on_viewport_change(self, view: EventView, movement_alignment: Literal["before", "after"] | None) -> None:
-        if self._commit_sync_view_mode() != DataView.TRANSACTIONS:
+        if self.primary_view != DataView.TRANSACTIONS:
             return
 
         if view is not self._transaction_view or not self._transaction_view.has_focus():
@@ -1234,7 +1224,7 @@ class Top(urwid.widget.Widget):
         _focused_row_key: str | int | None,
         movement_alignment: Literal["before", "after"] | None,
     ) -> None:
-        if self._commit_sync_view_mode() != DataView.TRANSACTIONS:
+        if self.primary_view != DataView.TRANSACTIONS:
             return
 
         if view is not self._transaction_view or not self._transaction_view.has_focus():
@@ -1459,7 +1449,7 @@ class Top(urwid.widget.Widget):
                     self.state.column_header_width,
                     self.commit_sync_index,
                     self.pushout_index,
-                    self._commit_sync_view_mode(),
+                    self.primary_view,
                 )
 
                 self.commit_syncer.start(self.main_loop)

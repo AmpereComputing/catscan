@@ -159,6 +159,20 @@ class TestTopResourceCommitSync(TransactionSyncDataTest):
         self.assertEqual(top.commit_syncer.sent[0].cycles_per_char, Fraction(1, 8))
         self.assertTrue(top.commit_syncer.sent[0].expand_rows)
 
+    def test_resource_sender_uses_primary_view(self):
+        top = self.make_top(view=DataView.RESOURCE)
+        top.update_state(top.state.copy_with(start_ps=100, cycles_per_char=Fraction(1, 8), expand_rows=True))
+        top.commit_syncer = DummyCommitSyncer(
+            other_commit_index=top.commit_sync_index,
+            view_mode=DataView.TRANSACTIONS,
+        )
+
+        top.send_commit_sync()
+
+        self.assertEqual(len(top.commit_syncer.sent), 1)
+        self.assertEqual(top.commit_syncer.sent[0].sync_index, 40)
+        self.assertEqual(top.commit_syncer.sent[0].chars_rel_to_start, 0)
+
     def test_resource_start_commit_sync_without_pushouts_does_not_save_stream_data(self):
         top = self.make_top(view=DataView.RESOURCE, start_commit_sync=False)
         top.main_loop = DummyMainLoop()
