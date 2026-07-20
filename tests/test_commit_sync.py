@@ -207,6 +207,33 @@ class TestCommitSync(unittest.TestCase):
         self.assertIsNone(state.movement_alignment)
         self.assertEqual(state.sync_index, 9)
 
+    def test_state_merge_overlays_non_none_delta_fields(self):
+        state = CommitSyncState(
+            sync_index=10,
+            cycles_per_char=Fraction(1, 1),
+            expand_rows=False,
+            chars_rel_to_start=7,
+            movement_alignment="after",
+        )
+
+        merged = state.merge(
+            CommitSyncState(
+                cycles_per_char=Fraction(1, 2),
+                expand_rows=True,
+            )
+        )
+
+        self.assertEqual(
+            merged,
+            CommitSyncState(
+                sync_index=10,
+                cycles_per_char=Fraction(1, 2),
+                expand_rows=True,
+                chars_rel_to_start=7,
+                movement_alignment="after",
+            ),
+        )
+
     def test_transaction_row_receive_bypasses_pushout_scaling(self):
         received = []
         with tempfile.NamedTemporaryFile() as tmpfile:

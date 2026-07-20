@@ -94,6 +94,9 @@ class CommitSyncState(NamedTuple):
     chars_rel_to_start: int | None = None  # The number of characters right-of-center the referenced sync_index is
     movement_alignment: Literal["before", "after"] | None = None
 
+    def merge(self, delta: "CommitSyncState") -> "CommitSyncState":
+        return self._replace(**{name: value for name, value in delta._asdict().items() if value is not None})
+
 
 @dataclass
 class CommitSyncPeer:
@@ -130,17 +133,6 @@ class CommitSyncStateJSONDecoder(json.JSONDecoder):
             chars_rel_to_start=data.get("chars_rel_to_start"),
             movement_alignment=data.get("movement_alignment"),
         )
-
-
-def _merge_sync_state_delta(
-    previous_sync_state: CommitSyncState | None, sync_state: CommitSyncState
-) -> CommitSyncState:
-    if previous_sync_state is None:
-        return sync_state
-
-    return previous_sync_state._replace(
-        **{name: value for name, value in sync_state._asdict().items() if value is not None}
-    )
 
 
 class CommitSyncer:
@@ -521,7 +513,9 @@ class CommitSyncer:
         return self._write_sync_state(delta_sync_state, remembered_sync_state=sync_state)
 
     def _dispatch_received_sync_state(self, sync_state: CommitSyncState) -> None:
-        self.latest_sync_state = _merge_sync_state_delta(self.latest_sync_state, sync_state)
+        self.latest_sync_state = (
+            sync_state if self.latest_sync_state is None else self.latest_sync_state.merge(sync_state)
+        )
         if self.main_loop is None:
             self.sync_callback(self.latest_sync_state)
         else:
