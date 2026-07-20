@@ -98,6 +98,9 @@ class CommitSyncState(NamedTuple):
     def merge(self, delta: "CommitSyncState") -> "CommitSyncState":
         return self._replace(**{name: value for name, value in delta._asdict().items() if value is not None})
 
+    def has_fields(self) -> bool:
+        return any(value is not None for value in self)
+
 
 @dataclass
 class CommitSyncPeer:
@@ -466,9 +469,6 @@ class CommitSyncer:
 
         return CommitSyncState(**delta_values)
 
-    def _sync_state_has_fields(self, sync_state: CommitSyncState) -> bool:
-        return any(value is not None for value in sync_state)
-
     def _write_sync_state(
         self, sync_state: CommitSyncState, remembered_sync_state: CommitSyncState | None = None
     ) -> bool:
@@ -492,7 +492,7 @@ class CommitSyncer:
             return self.send(sync_state)
 
         delta_sync_state = self._delta_sync_state(sync_state)
-        if not self._sync_state_has_fields(delta_sync_state):
+        if not delta_sync_state.has_fields():
             if sync_state.sync_index is None:
                 self._last_sent_anchor_state = None
             return False

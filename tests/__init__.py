@@ -102,7 +102,7 @@ class DummyCommitSyncer:
 
     def send_if_changed(self, sync_state):
         delta_sync_state = self._delta_sync_state(sync_state)
-        if not any(value is not None for value in delta_sync_state):
+        if not delta_sync_state.has_fields():
             if sync_state.sync_index is None:
                 self._last_sent_anchor_state = None
             return False

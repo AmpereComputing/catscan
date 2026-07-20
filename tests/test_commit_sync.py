@@ -234,6 +234,10 @@ class TestCommitSync(unittest.TestCase):
             ),
         )
 
+    def test_state_has_fields_detects_non_none_values(self):
+        self.assertFalse(CommitSyncState().has_fields())
+        self.assertTrue(CommitSyncState(expand_rows=False).has_fields())
+
     def test_transaction_row_receive_bypasses_pushout_scaling(self):
         received = []
         with tempfile.NamedTemporaryFile() as tmpfile:
