@@ -561,7 +561,7 @@ class EventView(urwid.WidgetWrap, View):
         self._invalidate()
         return True
 
-    def _update_selected_row_name(self, newly_selected_row: str) -> None:
+    def _update_selected_row_name(self, newly_selected_row: str | int) -> None:
         row_position = self.row_position(newly_selected_row)
         if row_position is not None:
             self.list_walker.set_focus(row_position)
@@ -594,6 +594,13 @@ class EventView(urwid.WidgetWrap, View):
     def row_position(self, row_key: str | int) -> int | None:
         return self._row_positions.get(row_key)
 
+    def _row_key_at_position(self, position: int | None) -> str | int | None:
+        if position is None:
+            return None
+
+        row_type, row_key = self.list_box.body[position].row_id()
+        return None if row_type is RowType.RESOURCE_BASE else row_key
+
     def visible_row_keys(self) -> list[str | int]:
         if self._last_rendered_size is None or len(self.list_box.body) == 0:
             return []
@@ -607,8 +614,8 @@ class EventView(urwid.WidgetWrap, View):
         visible_keys = []
         seen = set()
         for position in positions:
-            row_type, row_key = self.list_box.body[position].row_id()
-            if row_type is RowType.RESOURCE_BASE or row_key in seen:
+            row_key = self._row_key_at_position(position)
+            if row_key is None or row_key in seen:
                 continue
             visible_keys.append(row_key)
             seen.add(row_key)

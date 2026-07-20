@@ -6,7 +6,7 @@ from typing import Any
 import urwid
 from perf_streams.event_stream import Event
 
-from catscan.commit_sync import CommitSyncer, PushoutEvent
+from catscan.commit_sync import CommitSyncer
 from catscan.data import EventData, EventStreamData, EventStreamDataEventView
 from catscan.widgets.event_row import EventRow, EventRowBase, GroupRow
 from catscan.widgets.event_view import EventView
@@ -114,47 +114,14 @@ class ResourceView(EventView):
         if commit_event not in self.stream_data.event_rows:
             return []
 
-        movements = commit_syncer.compute_commit_pushout_movements()
         event_row = self.stream_data.event_rows[commit_event]
-        next_event_id = self.stream_data.max_event_id + 1
-        pushout_events: list[Event] = []
-
-        def gen_pushout_events(commit_evt: Event, event_name: str, pushout_movement: int) -> None:
-            nonlocal next_event_id
-            sync_index = commit_evt.data[commit_data_name]
-            for i in range(-pushout_movement, 0):
-                pushout_events.append(
-                    PushoutEvent(
-                        event_name,
-                        next_event_id,
-                        commit_evt.time + i * self.state.ps_per_cycle,
-                        commit_evt.data["txid"],
-                        commit_data_name,
-                        sync_index,
-                        commit_syncer.my.pushout_index[sync_index],
-                        commit_syncer.other.pushout_index[sync_index],
-                    )
-                )
-                next_event_id += 1
-
-        for commit_evt in event_row[:]:
-            if commit_data_name not in commit_evt.data:
-                continue
-            sync_index = commit_evt.data[commit_data_name]
-            if sync_index in movements.excess_pushout:
-                gen_pushout_events(
-                    commit_evt,
-                    f"{event_row.group}.excess_commit_pushout",
-                    movements.excess_pushout[sync_index],
-                )
-            if sync_index in movements.cumulative_pushout_movement:
-                gen_pushout_events(
-                    commit_evt,
-                    f"{event_row.group}.debounced_cumulative_pushout",
-                    movements.cumulative_pushout_movement[sync_index],
-                )
-
-        return pushout_events
+        return commit_syncer.materialize_commit_pushout_events(
+            event_row[:],
+            event_row.group,
+            commit_data_name,
+            self.state.ps_per_cycle,
+            self.stream_data.max_event_id + 1,
+        )
 
     def commit_sync_index_candidates(self) -> list[int]:
         if self._commit_sync_event is None or self._commit_sync_data_name is None:
@@ -177,12 +144,6 @@ class ResourceView(EventView):
                 break
 
         return candidates
-
-    def _update_selected_row_name(self, newly_selected_row: str) -> None:
-        row_position = self.row_position(newly_selected_row)
-        if row_position is not None:
-            self.list_walker.set_focus(row_position)
-            self._emit_position_change_notifications()
 
 
 class SubsetResourceView(ResourceView):
@@ -208,10 +169,10 @@ class SubsetResourceView(ResourceView):
         return not self.events
 
     def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
-        return super(ResourceView, self).start_commit_sync(commit_syncer, commit_event, commit_data_name)
+        return EventView.start_commit_sync(self, commit_syncer, commit_event, commit_data_name)
 
     def commit_sync_index_candidates(self) -> list[int]:
-        return super(ResourceView, self).commit_sync_index_candidates()
+        return EventView.commit_sync_index_candidates(self)
 
     def add_event(self, event: str):
         if event not in self.events:
@@ -254,12 +215,6 @@ class SubsetResourceView(ResourceView):
 
     def max_rows(self) -> int | None:
         return self._max_rows
-
-    def _update_selected_row_name(self, newly_selected_row: str) -> None:
-        row_position = self.row_position(newly_selected_row)
-        if row_position is not None:
-            self.list_walker.set_focus(row_position)
-            self._emit_position_change_notifications()
 
     def rows(self, size: tuple[int], focus: bool = False) -> int:
         if not self.events:

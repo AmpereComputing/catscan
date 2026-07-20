@@ -7,7 +7,7 @@ import json
 import logging
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from fractions import Fraction
@@ -15,6 +15,7 @@ from threading import Thread
 from typing import Final, Literal, NamedTuple
 
 import urwid
+from perf_streams.event_stream import Event
 
 from catscan.data import CatscanEvent, DataView, EventData
 
@@ -359,6 +360,55 @@ class CommitSyncer:
 
         return CommitPushoutMovements(excess_pushout, cumulative_pushout_movement)
 
+    def materialize_commit_pushout_events(
+        self,
+        commit_events: Iterable[Event],
+        group_name: str,
+        commit_data_name: str,
+        ps_per_cycle: int,
+        first_event_id: int,
+    ) -> list[PushoutEvent]:
+        movements = self.compute_commit_pushout_movements()
+        next_event_id = first_event_id
+        pushout_events: list[PushoutEvent] = []
+
+        def gen_pushout_events(commit_evt: Event, event_name: str, pushout_movement: int) -> None:
+            nonlocal next_event_id
+            sync_index = commit_evt.data[commit_data_name]
+            for i in range(-pushout_movement, 0):
+                pushout_events.append(
+                    PushoutEvent(
+                        event_name,
+                        next_event_id,
+                        commit_evt.time + i * ps_per_cycle,
+                        commit_evt.data["txid"],
+                        commit_data_name,
+                        sync_index,
+                        self.my.pushout_index[sync_index],
+                        self.other.pushout_index[sync_index],
+                    )
+                )
+                next_event_id += 1
+
+        for commit_evt in commit_events:
+            if commit_data_name not in commit_evt.data:
+                continue
+            sync_index = commit_evt.data[commit_data_name]
+            if sync_index in movements.excess_pushout:
+                gen_pushout_events(
+                    commit_evt,
+                    f"{group_name}.excess_commit_pushout",
+                    movements.excess_pushout[sync_index],
+                )
+            if sync_index in movements.cumulative_pushout_movement:
+                gen_pushout_events(
+                    commit_evt,
+                    f"{group_name}.debounced_cumulative_pushout",
+                    movements.cumulative_pushout_movement[sync_index],
+                )
+
+        return pushout_events
+
     def stop(self) -> None:
         if self.stopped:
             return
@@ -394,10 +444,6 @@ class CommitSyncer:
         return bool(self.initialized and not self.stopped and self.outgoing)
 
     @property
-    def view_mode(self) -> DataView:
-        return self.my.view_mode
-
-    @property
     def other_view_mode(self) -> DataView:
         return self.other.view_mode
 
@@ -430,23 +476,6 @@ class CommitSyncer:
             getattr(sync_state, field_name) == getattr(self._last_sent_anchor_state, field_name)
             for field_name in COMMIT_SYNC_ANCHOR_FIELDS
         )
-
-    def _sync_state_matches(
-        self,
-        sync_state: CommitSyncState,
-        previous_sync_state: CommitSyncState | None,
-        field_names: tuple[str, ...] | None = None,
-    ) -> bool:
-        if previous_sync_state is None:
-            return False
-
-        last_values = previous_sync_state._asdict()
-        values = sync_state._asdict()
-        field_names = field_names or tuple(values)
-        return all(values[name] is None or last_values[name] == values[name] for name in field_names)
-
-    def sent_anchor_matches(self, sync_state: CommitSyncState) -> bool:
-        return self._sent_anchor_matches(sync_state)
 
     def _delta_sync_state(self, sync_state: CommitSyncState) -> CommitSyncState:
         previous_sync_state = self._last_sent_sync_state

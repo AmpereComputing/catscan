@@ -60,10 +60,6 @@ class DummyCommitSyncer:
         self._last_sent_anchor_state = None
 
     @property
-    def view_mode(self):
-        return self.my.view_mode
-
-    @property
     def other_view_mode(self):
         return self.other.view_mode
 
@@ -83,6 +79,18 @@ class DummyCommitSyncer:
     def compute_commit_pushout_movements(self):
         return CommitSyncer.compute_commit_pushout_movements(self)
 
+    def materialize_commit_pushout_events(
+        self, commit_events, group_name, commit_data_name, ps_per_cycle, first_event_id
+    ):
+        return CommitSyncer.materialize_commit_pushout_events(
+            self,
+            commit_events,
+            group_name,
+            commit_data_name,
+            ps_per_cycle,
+            first_event_id,
+        )
+
     def _sent_anchor_matches(self, sync_state):
         return CommitSyncer._sent_anchor_matches(self, sync_state)
 
@@ -93,12 +101,6 @@ class DummyCommitSyncer:
         self.sent.append(sync_state)
         CommitSyncer._remember_sent(self, sync_state)
         return True
-
-    def _sync_state_matches(self, sync_state, previous_sync_state, field_names=None):
-        return CommitSyncer._sync_state_matches(self, sync_state, previous_sync_state, field_names)
-
-    def sent_anchor_matches(self, sync_state):
-        return self._sent_anchor_matches(sync_state)
 
     def send_if_changed(self, sync_state):
         delta_sync_state = self._delta_sync_state(sync_state)

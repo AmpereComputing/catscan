@@ -8,7 +8,7 @@ from perf_streams.event_stream import Event
 
 from catscan.commit_sync import CommitSyncer
 from catscan.data import EventStreamDataTransactionView, TransactionEventData
-from catscan.widgets.event_row import EventRow, RowType
+from catscan.widgets.event_row import EventRow
 from catscan.widgets.event_view import EventView
 
 
@@ -91,12 +91,7 @@ class TransactionView(EventView):
         return middle.focus_pos
 
     def top_visible_row_key(self) -> str | int | None:
-        position = self._visible_top_position()
-        if position is None:
-            return None
-
-        row_type, row_key = self.list_box.body[position].row_id()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
+        return self._row_key_at_position(self._visible_top_position())
 
     def _movement_alignment(self, top_position: int | None) -> Literal["before", "after"] | None:
         if (
@@ -106,13 +101,6 @@ class TransactionView(EventView):
         ):
             return "after" if top_position > self._last_top_visible_position else "before"
         return None
-
-    def _top_visible_row_key_at_position(self, top_position: int | None) -> str | int | None:
-        if top_position is None:
-            return None
-
-        row_type, row_key = self.list_box.body[top_position].row_id()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
 
     def _emit_viewport_change_if_needed(
         self,
@@ -125,7 +113,7 @@ class TransactionView(EventView):
         if movement_alignment is None:
             movement_alignment = self._movement_alignment(top_position)
 
-        top_row_key = self._top_visible_row_key_at_position(top_position)
+        top_row_key = self._row_key_at_position(top_position)
         if force or top_row_key != self._last_top_visible_row_key:
             self._last_top_visible_row_key = top_row_key
             self._last_top_visible_position = top_position
@@ -216,9 +204,3 @@ class TransactionView(EventView):
             operation()
         finally:
             self._suppress_commit_sync = False
-
-    def _update_selected_row_name(self, newly_selected_row: int) -> None:
-        row_position = self.row_position(newly_selected_row)
-        if row_position is not None:
-            self.list_walker.set_focus(row_position)
-            self._emit_position_change_notifications()

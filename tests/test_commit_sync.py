@@ -625,26 +625,7 @@ class TestCommitSyncSendIfChanged(unittest.TestCase):
         self.assertNotIn("sync_index", messages[0])
         self.assertNotIn("chars_rel_to_start", messages[0])
 
-    def test_sent_anchor_matches_ignores_display_state(self):
-        syncer = self.make_syncer()
-        anchored_sync_state = CommitSyncState(
-            sync_index=10,
-            cycles_per_char=Fraction(1, 1),
-            expand_rows=False,
-            chars_rel_to_start=0,
-        )
-        same_anchor_sync_state = CommitSyncState(
-            sync_index=10,
-            cycles_per_char=Fraction(1, 2),
-            expand_rows=True,
-            chars_rel_to_start=0,
-        )
-
-        syncer.send(anchored_sync_state)
-
-        self.assertTrue(syncer.sent_anchor_matches(same_anchor_sync_state))
-
-    def test_sent_anchor_matches_detects_different_anchor(self):
+    def test_changed_anchor_sends_anchor_fields(self):
         syncer = self.make_syncer()
         anchored_sync_state = CommitSyncState(
             sync_index=10,
@@ -659,11 +640,14 @@ class TestCommitSyncSendIfChanged(unittest.TestCase):
             chars_rel_to_start=0,
         )
 
-        syncer.send(anchored_sync_state)
+        syncer.send_if_changed(anchored_sync_state)
+        self.assertTrue(syncer.send_if_changed(different_anchor_sync_state))
+        messages = [json.loads(line) for line in syncer.outgoing.getvalue().splitlines()]
 
-        self.assertFalse(syncer.sent_anchor_matches(different_anchor_sync_state))
+        self.assertEqual(messages[1]["sync_index"], 11)
+        self.assertEqual(messages[1]["chars_rel_to_start"], 0)
 
-    def test_sent_anchor_matches_detects_different_alignment(self):
+    def test_changed_alignment_sends_anchor_fields(self):
         syncer = self.make_syncer()
         anchored_sync_state = CommitSyncState(
             sync_index=10,
@@ -679,9 +663,13 @@ class TestCommitSyncSendIfChanged(unittest.TestCase):
             movement_alignment="after",
         )
 
-        syncer.send(anchored_sync_state)
+        syncer.send_if_changed(anchored_sync_state)
+        self.assertTrue(syncer.send_if_changed(different_alignment_sync_state))
+        messages = [json.loads(line) for line in syncer.outgoing.getvalue().splitlines()]
 
-        self.assertFalse(syncer.sent_anchor_matches(different_alignment_sync_state))
+        self.assertEqual(messages[1]["sync_index"], 10)
+        self.assertEqual(messages[1]["chars_rel_to_start"], 0)
+        self.assertEqual(messages[1]["movement_alignment"], "after")
 
     def test_peer_sync_index_helpers_check_commit_and_pushout_indexes(self):
         syncer = self.make_syncer()

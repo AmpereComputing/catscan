@@ -1238,14 +1238,17 @@ class Top(urwid.widget.Widget):
 
         self._receive_resource_view_commit_sync(sync_state)
 
-    def on_viewport_change(self, view: EventView, movement_alignment: Literal["before", "after"] | None) -> None:
+    def _should_send_transaction_commit_sync(self, view: EventView) -> bool:
         if self.primary_view_type != DataView.TRANSACTIONS:
-            return
+            return False
 
         if view is not self._transaction_view or not self._transaction_view.has_focus():
-            return
+            return False
 
-        if self._transaction_view.suppressing_commit_sync:
+        return not self._transaction_view.suppressing_commit_sync
+
+    def on_viewport_change(self, view: EventView, movement_alignment: Literal["before", "after"] | None) -> None:
+        if not self._should_send_transaction_commit_sync(view):
             return
 
         self.send_commit_sync(movement_alignment=movement_alignment)
@@ -1256,13 +1259,7 @@ class Top(urwid.widget.Widget):
         _focused_row_key: str | int | None,
         movement_alignment: Literal["before", "after"] | None,
     ) -> None:
-        if self.primary_view_type != DataView.TRANSACTIONS:
-            return
-
-        if view is not self._transaction_view or not self._transaction_view.has_focus():
-            return
-
-        if self._transaction_view.suppressing_commit_sync:
+        if not self._should_send_transaction_commit_sync(view):
             return
 
         self.send_commit_sync(movement_alignment=movement_alignment)
