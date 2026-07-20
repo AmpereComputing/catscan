@@ -258,7 +258,9 @@ class Top(urwid.widget.Widget):
                 yield from self._event_views(child_view)
 
     @property
-    def _primary_view(self,) -> EventView:
+    def _primary_view(
+        self,
+    ) -> EventView:
         if self.primary_view_type == DataView.TRANSACTIONS:
             return self._transaction_view
         return self._resource_view
@@ -1059,9 +1061,7 @@ class Top(urwid.widget.Widget):
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
-        anchor_sync_index = self.commit_syncer.first_other_sync_index(
-            self._primary_view.commit_sync_index_candidates()
-        )
+        anchor_sync_index = self.commit_syncer.first_other_sync_index(self._primary_view.commit_sync_index_candidates())
 
         if anchor_sync_index is None:
             logging.info("Did not send sync because no shared instruction commit was found")
@@ -1092,11 +1092,6 @@ class Top(urwid.widget.Widget):
             chars_rel_to_start=offset_chars,
         )
         self.commit_syncer.send_if_changed(sync_state)
-
-    def _commit_sync_sender_view_mode(self) -> DataView:
-        if self.commit_syncer:
-            return self.commit_syncer.other_view_mode
-        return DataView.RESOURCE
 
     def _transaction_view_position(self) -> tuple[str | int | None, str | int | None]:
         if self.primary_view_type != DataView.TRANSACTIONS:
@@ -1131,32 +1126,54 @@ class Top(urwid.widget.Widget):
         if transaction_position is not None:
             self._restore_transaction_view_position(transaction_position)
 
-    def receive_commit_sync(self, sync_state: CommitSyncState) -> None:
-        sender_view_mode = self._commit_sync_sender_view_mode()
+    def _apply_unresolved_commit_sync(
+        self,
+        sync_state: CommitSyncState,
+        message: str,
+        *,
+        preserve_transaction_position: bool = True,
+    ) -> None:
+        logging.warning("%s: %s", message, sync_state.sync_index)
+        self._apply_commit_sync_display_state(
+            sync_state,
+            preserve_transaction_position=preserve_transaction_position,
+        )
 
-        if sync_state.sync_index is None:
-            self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
-            return
+    def _commit_sync_index_time(
+        self,
+        sync_state: CommitSyncState,
+        *,
+        preserve_transaction_position: bool = True,
+    ) -> int | None:
+        if sync_state.sync_index in self.commit_sync_index:
+            return self.commit_sync_index[sync_state.sync_index]
 
-        if sender_view_mode == DataView.TRANSACTIONS:
-            if self.primary_view_type == DataView.RESOURCE:
-                if sync_state.sync_index not in self.commit_sync_index:
-                    logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
-                    self._apply_commit_sync_display_state(sync_state)
-                    return
+        self._apply_unresolved_commit_sync(
+            sync_state,
+            "Received sync_index not in sync_index index",
+            preserve_transaction_position=preserve_transaction_position,
+        )
+        return None
 
-                self._apply_commit_sync_display_state(
-                    sync_state,
-                    start_ps=self.commit_sync_index[sync_state.sync_index],
-                )
-                return
+    def _commit_sync_transaction_row(
+        self,
+        sync_state: CommitSyncState,
+        sync_description: str,
+    ) -> str | int | None:
+        transaction_row = self._transaction_view.commit_sync_row(sync_state.sync_index)
+        if transaction_row is not None:
+            return transaction_row
 
-            transaction_row = self._transaction_view.commit_sync_row(sync_state.sync_index)
+        self._apply_unresolved_commit_sync(
+            sync_state,
+            f"Received {sync_description} sync_index not in transaction-row index",
+        )
+        return None
+
+    def _receive_transaction_view_commit_sync(self, sync_state: CommitSyncState) -> None:
+        if self.commit_syncer.other_view_mode == DataView.TRANSACTIONS:
+            transaction_row = self._commit_sync_transaction_row(sync_state, "transaction-row")
             if transaction_row is None:
-                logging.info(
-                    f"Received transaction-row sync_index not in transaction-row index: {sync_state.sync_index}"
-                )
-                self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
                 return
 
             self._apply_commit_sync_display_state(sync_state)
@@ -1170,29 +1187,32 @@ class Top(urwid.widget.Widget):
             self._transaction_view.scroll_row_to_edge_for_commit_sync(transaction_row, row_align)
             return
 
-        if sync_state.sync_index not in self.commit_sync_index:
-            logging.info(f"Received sync_index not in sync_index index: {sync_state.sync_index}")
-            self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
+        if self._commit_sync_index_time(sync_state) is None:
             return
 
-        if self.primary_view_type == DataView.TRANSACTIONS:
-            transaction_row = self._transaction_view.commit_sync_row(sync_state.sync_index)
-            if transaction_row is None:
-                logging.info(f"Received time sync_index not in transaction-row index: {sync_state.sync_index}")
-                self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
-                return
+        transaction_row = self._commit_sync_transaction_row(sync_state, "time")
+        if transaction_row is None:
+            return
 
-            self._apply_commit_sync_display_state(sync_state)
-            self._transaction_view.scroll_row_to_top_for_commit_sync(transaction_row)
+        self._apply_commit_sync_display_state(sync_state)
+        self._transaction_view.scroll_row_to_top_for_commit_sync(transaction_row)
+
+    def _receive_resource_view_commit_sync(self, sync_state: CommitSyncState) -> None:
+        sync_index_commit_ps = self._commit_sync_index_time(
+            sync_state,
+            preserve_transaction_position=False,
+        )
+        if sync_index_commit_ps is None:
+            return
+
+        if self.commit_syncer.other_view_mode == DataView.TRANSACTIONS:
+            self._apply_commit_sync_display_state(sync_state, start_ps=sync_index_commit_ps)
             return
 
         if sync_state.chars_rel_to_start is None:
             self._apply_commit_sync_display_state(sync_state)
             return
 
-        # Calculate the time at the left-hand side of the screen based on our
-        # scaling of the received offset from the reference sync_index
-        sync_index_commit_ps = self.commit_sync_index[sync_state.sync_index]
         new_start_ps = round(
             sync_index_commit_ps
             + sync_state.chars_rel_to_start
@@ -1201,6 +1221,17 @@ class Top(urwid.widget.Widget):
         )
 
         self._apply_commit_sync_display_state(sync_state, start_ps=new_start_ps)
+
+    def receive_commit_sync(self, sync_state: CommitSyncState) -> None:
+        if sync_state.sync_index is None:
+            self._apply_commit_sync_display_state(sync_state, preserve_transaction_position=True)
+            return
+
+        if self.primary_view_type == DataView.TRANSACTIONS:
+            self._receive_transaction_view_commit_sync(sync_state)
+            return
+
+        self._receive_resource_view_commit_sync(sync_state)
 
     def on_viewport_change(self, view: EventView, movement_alignment: Literal["before", "after"] | None) -> None:
         if self.primary_view_type != DataView.TRANSACTIONS:
