@@ -84,64 +84,18 @@ class DummyCommitSyncer:
         return CommitSyncer.compute_commit_pushout_movements(self)
 
     def _sent_anchor_matches(self, sync_state):
-        if sync_state.sync_index is None:
-            return True
-        if self._last_sent_anchor_state is None:
-            return False
-        return (
-            sync_state.sync_index,
-            sync_state.chars_rel_to_start,
-            sync_state.movement_alignment,
-        ) == (
-            self._last_sent_anchor_state.sync_index,
-            self._last_sent_anchor_state.chars_rel_to_start,
-            self._last_sent_anchor_state.movement_alignment,
-        )
+        return CommitSyncer._sent_anchor_matches(self, sync_state)
 
     def _delta_sync_state(self, sync_state):
-        previous_values = self._last_sent_sync_state._asdict() if self._last_sent_sync_state else {}
-
-        sync_index = None
-        chars_rel_to_start = None
-        movement_alignment = None
-        if not self._sent_anchor_matches(sync_state):
-            sync_index = sync_state.sync_index
-            chars_rel_to_start = sync_state.chars_rel_to_start
-            movement_alignment = sync_state.movement_alignment
-
-        cycles_per_char = sync_state.cycles_per_char
-        if previous_values.get("cycles_per_char") == cycles_per_char:
-            cycles_per_char = None
-
-        expand_rows = sync_state.expand_rows
-        if previous_values.get("expand_rows") == expand_rows:
-            expand_rows = None
-
-        return CommitSyncState(
-            sync_index=sync_index,
-            cycles_per_char=cycles_per_char,
-            expand_rows=expand_rows,
-            chars_rel_to_start=chars_rel_to_start,
-            movement_alignment=movement_alignment,
-        )
+        return CommitSyncer._delta_sync_state(self, sync_state)
 
     def send(self, sync_state):
         self.sent.append(sync_state)
-        self._last_sent_sync_state = sync_state
-        if sync_state.sync_index is not None:
-            self._last_sent_anchor_state = sync_state
-        else:
-            self._last_sent_anchor_state = None
+        CommitSyncer._remember_sent(self, sync_state)
         return True
 
     def _sync_state_matches(self, sync_state, previous_sync_state, field_names=None):
-        if previous_sync_state is None:
-            return False
-
-        last_values = previous_sync_state._asdict()
-        values = sync_state._asdict()
-        field_names = field_names or tuple(values)
-        return all(values[name] is None or last_values[name] == values[name] for name in field_names)
+        return CommitSyncer._sync_state_matches(self, sync_state, previous_sync_state, field_names)
 
     def sent_anchor_matches(self, sync_state):
         return self._sent_anchor_matches(sync_state)
@@ -153,11 +107,7 @@ class DummyCommitSyncer:
                 self._last_sent_anchor_state = None
             return False
         self.sent.append(delta_sync_state)
-        self._last_sent_sync_state = sync_state
-        if sync_state.sync_index is not None:
-            self._last_sent_anchor_state = sync_state
-        else:
-            self._last_sent_anchor_state = None
+        CommitSyncer._remember_sent(self, sync_state)
         return True
 
 

@@ -12,7 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from fractions import Fraction
 from threading import Thread
-from typing import Literal, NamedTuple
+from typing import Final, Literal, NamedTuple
 
 import urwid
 
@@ -53,6 +53,7 @@ CUMULATIVE_PUSHOUT_BOUNDS = 16
 # Refresh rate (seconds) for syncing, allows for dropping older updates to get the most
 # recent, reducing rubberbanding
 REFRESH_RATE = 1 / 60  # 60Hz
+COMMIT_SYNC_ANCHOR_FIELDS: Final = ("sync_index", "chars_rel_to_start", "movement_alignment")
 
 
 class PushoutEvent(CatscanEvent):
@@ -121,17 +122,15 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
 
 
 class CommitSyncStateJSONDecoder(json.JSONDecoder):
+    def _decode_value(self, name: str, value: JsonValue) -> JsonValue | Fraction:
+        if name == "cycles_per_char" and value is not None:
+            return Fraction(value["numerator"], value["denominator"])
+        return value
+
     def decode(self, json_string: str) -> CommitSyncState:
         data = super().decode(json_string)
-        cycles_per_char = data.get("cycles_per_char")
         return CommitSyncState(
-            sync_index=data.get("sync_index"),
-            cycles_per_char=None
-            if cycles_per_char is None
-            else Fraction(cycles_per_char["numerator"], cycles_per_char["denominator"]),
-            expand_rows=data.get("expand_rows"),
-            chars_rel_to_start=data.get("chars_rel_to_start"),
-            movement_alignment=data.get("movement_alignment"),
+            **{name: self._decode_value(name, value) for name, value in data.items() if name in CommitSyncState._fields}
         )
 
 
@@ -424,14 +423,9 @@ class CommitSyncer:
             return True
         if self._last_sent_anchor_state is None:
             return False
-        return (
-            sync_state.sync_index,
-            sync_state.chars_rel_to_start,
-            sync_state.movement_alignment,
-        ) == (
-            self._last_sent_anchor_state.sync_index,
-            self._last_sent_anchor_state.chars_rel_to_start,
-            self._last_sent_anchor_state.movement_alignment,
+        return all(
+            getattr(sync_state, field_name) == getattr(self._last_sent_anchor_state, field_name)
+            for field_name in COMMIT_SYNC_ANCHOR_FIELDS
         )
 
     def _sync_state_matches(
@@ -454,30 +448,23 @@ class CommitSyncer:
     def _delta_sync_state(self, sync_state: CommitSyncState) -> CommitSyncState:
         previous_sync_state = self._last_sent_sync_state
         previous_values = previous_sync_state._asdict() if previous_sync_state else {}
+        values = sync_state._asdict()
+        delta_values = {}
 
-        sync_index = None
-        chars_rel_to_start = None
-        movement_alignment = None
         if not self._sent_anchor_matches(sync_state):
-            sync_index = sync_state.sync_index
-            chars_rel_to_start = sync_state.chars_rel_to_start
-            movement_alignment = sync_state.movement_alignment
+            delta_values.update({field_name: values[field_name] for field_name in COMMIT_SYNC_ANCHOR_FIELDS})
 
-        cycles_per_char = sync_state.cycles_per_char
-        if previous_values.get("cycles_per_char") == cycles_per_char:
-            cycles_per_char = None
-
-        expand_rows = sync_state.expand_rows
-        if previous_values.get("expand_rows") == expand_rows:
-            expand_rows = None
-
-        return CommitSyncState(
-            sync_index=sync_index,
-            cycles_per_char=cycles_per_char,
-            expand_rows=expand_rows,
-            chars_rel_to_start=chars_rel_to_start,
-            movement_alignment=movement_alignment,
+        delta_values.update(
+            {
+                field_name: value
+                for field_name, value in values.items()
+                if field_name not in COMMIT_SYNC_ANCHOR_FIELDS
+                and value is not None
+                and previous_values.get(field_name) != value
+            }
         )
+
+        return CommitSyncState(**delta_values)
 
     def _sync_state_has_fields(self, sync_state: CommitSyncState) -> bool:
         return any(value is not None for value in sync_state)
@@ -569,12 +556,6 @@ class CommitSyncer:
         else:
             rel_chars = sync_state.chars_rel_to_start
 
-        adjusted_sync_state = CommitSyncState(
-            sync_index=sync_state.sync_index,
-            cycles_per_char=sync_state.cycles_per_char,
-            expand_rows=sync_state.expand_rows,
-            chars_rel_to_start=rel_chars,
-            movement_alignment=sync_state.movement_alignment,
-        )
+        adjusted_sync_state = sync_state._replace(chars_rel_to_start=rel_chars)
 
         self._dispatch_received_sync_state(adjusted_sync_state)
