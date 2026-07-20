@@ -114,14 +114,45 @@ class ResourceView(EventView):
         if commit_event not in self.stream_data.event_rows:
             return []
 
+        movements = commit_syncer.compute_commit_pushout_movements()
         event_row = self.stream_data.event_rows[commit_event]
-        return commit_syncer.materialize_commit_pushout_events(
-            event_row[:],
-            event_row.group,
-            commit_data_name,
-            self.state.ps_per_cycle,
-            self.stream_data.max_event_id + 1,
-        )
+        next_event_id = self.stream_data.max_event_id + 1
+        pushout_events: list[Event] = []
+
+        def gen_pushout_events(commit_evt: Event, event_name: str, pushout_movement: int) -> None:
+            nonlocal next_event_id
+            sync_index = commit_evt.data[commit_data_name]
+            for i in range(-pushout_movement, 0):
+                pushout_events.append(
+                    commit_syncer.create_pushout_event(
+                        event_name,
+                        next_event_id,
+                        commit_evt.time + i * self.state.ps_per_cycle,
+                        commit_evt.data["txid"],
+                        commit_data_name,
+                        sync_index,
+                    )
+                )
+                next_event_id += 1
+
+        for commit_evt in event_row[:]:
+            if commit_data_name not in commit_evt.data:
+                continue
+            sync_index = commit_evt.data[commit_data_name]
+            if sync_index in movements.excess_pushout:
+                gen_pushout_events(
+                    commit_evt,
+                    f"{event_row.group}.excess_commit_pushout",
+                    movements.excess_pushout[sync_index],
+                )
+            if sync_index in movements.cumulative_pushout_movement:
+                gen_pushout_events(
+                    commit_evt,
+                    f"{event_row.group}.debounced_cumulative_pushout",
+                    movements.cumulative_pushout_movement[sync_index],
+                )
+
+        return pushout_events
 
     def commit_sync_index_candidates(self) -> list[int]:
         if self._commit_sync_event is None or self._commit_sync_data_name is None:

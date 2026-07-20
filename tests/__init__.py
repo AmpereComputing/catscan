@@ -79,16 +79,15 @@ class DummyCommitSyncer:
     def compute_commit_pushout_movements(self):
         return CommitSyncer.compute_commit_pushout_movements(self)
 
-    def materialize_commit_pushout_events(
-        self, commit_events, group_name, commit_data_name, ps_per_cycle, first_event_id
-    ):
-        return CommitSyncer.materialize_commit_pushout_events(
+    def create_pushout_event(self, name, _id, time, txid, commit_data_name, sync_index):
+        return CommitSyncer.create_pushout_event(
             self,
-            commit_events,
-            group_name,
+            name,
+            _id,
+            time,
+            txid,
             commit_data_name,
-            ps_per_cycle,
-            first_event_id,
+            sync_index,
         )
 
     def _sent_anchor_matches(self, sync_state):
