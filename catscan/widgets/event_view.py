@@ -433,7 +433,7 @@ class EventView(urwid.WidgetWrap, View):
         self._last_top_visible_row_key = None
         self._last_top_visible_position = None
         self._last_focused_row_key = None
-        self._event_row_positions: dict[str | int, int] = {}
+        self._row_positions: dict[str | int, int] = {}
         self._commit_sync_event: str | None = None
         self._commit_sync_data_name: str | None = None
 
@@ -509,7 +509,7 @@ class EventView(urwid.WidgetWrap, View):
     def create_empty_row(self) -> EventRowBase:
         return EventRowBase()
 
-    def _build_event_row_positions(self) -> dict[str | int, int]:
+    def _build_row_positions(self) -> dict[str | int, int]:
         return {row.key(): row_index for row_index, row in enumerate(self.iter_event_rows())}
 
     def add_rows(self):
@@ -530,7 +530,7 @@ class EventView(urwid.WidgetWrap, View):
             if not self.list_walker:
                 self.list_walker.append(self.create_empty_row())
 
-        self._event_row_positions = self._build_event_row_positions()
+        self._row_positions = self._build_row_positions()
         self._last_top_visible_row_key = None
         self._last_top_visible_position = None
         self._last_focused_row_key = None
@@ -568,7 +568,7 @@ class EventView(urwid.WidgetWrap, View):
         return True
 
     def _update_selected_row_name(self, newly_selected_row: str) -> None:
-        row_position = self.event_row_position(newly_selected_row)
+        row_position = self.row_position(newly_selected_row)
         if row_position is not None:
             self.list_walker.set_focus(row_position)
             self._emit_position_change_notifications()
@@ -620,8 +620,8 @@ class EventView(urwid.WidgetWrap, View):
         row_type, row_key = self.list_box.body[position].row_id()
         return None if row_type is RowType.RESOURCE_BASE else row_key
 
-    def event_row_position(self, row_key: str | int) -> int | None:
-        return self._event_row_positions.get(row_key)
+    def row_position(self, row_key: str | int) -> int | None:
+        return self._row_positions.get(row_key)
 
     def visible_row_keys(self) -> list[str | int]:
         if self._last_rendered_size is None or len(self.list_box.body) == 0:
@@ -647,7 +647,7 @@ class EventView(urwid.WidgetWrap, View):
         return row_key in self.visible_row_keys()
 
     def scroll_row_to_edge(self, row_key: str | int, align: Literal["top", "bottom"] = "top") -> bool:
-        position = self.event_row_position(row_key)
+        position = self.row_position(row_key)
         if position is None:
             return False
 

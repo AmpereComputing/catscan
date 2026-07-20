@@ -107,13 +107,13 @@ class TransactionView(EventView):
         def restore_position() -> None:
             top_position = None
             if top_row_key is not None:
-                top_position = self.event_row_position(top_row_key)
+                top_position = self.row_position(top_row_key)
                 if top_position is not None:
                     self.list_box.set_focus(top_position)
                     self.list_box.set_focus_valign("top")
 
             if focused_row_key is not None and focused_row_key != top_row_key:
-                focused_position = self.event_row_position(focused_row_key)
+                focused_position = self.row_position(focused_row_key)
                 if focused_position is not None:
                     coming_from = "above" if top_position is None or focused_position >= top_position else "below"
                     self.list_box.set_focus(focused_position, coming_from)
@@ -148,7 +148,7 @@ class TransactionView(EventView):
             self._suppress_commit_sync = False
 
     def _update_selected_row_name(self, newly_selected_row: int) -> None:
-        row_position = self.event_row_position(newly_selected_row)
+        row_position = self.row_position(newly_selected_row)
         if row_position is not None:
             self.list_walker.set_focus(row_position)
             self._emit_position_change_notifications()
