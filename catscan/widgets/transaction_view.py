@@ -8,7 +8,7 @@ from perf_streams.event_stream import Event
 
 from catscan.commit_sync import CommitSyncer
 from catscan.data import EventStreamDataTransactionView, TransactionEventData
-from catscan.widgets.event_row import EventRow
+from catscan.widgets.event_row import EventRow, RowType
 from catscan.widgets.event_view import EventView
 
 
@@ -41,10 +41,13 @@ class TransactionView(EventView):
     Display rows of transactions with their respective events.
     """
 
-    def __init__(self, *args: Any, **kwargs: Any) -> None:
+    def __init__(self, *args: Any, on_viewport_change: Callable | None = None, **kwargs: Any) -> None:
         self._commit_sync_candidates_by_row: dict[str | int, list[int]] = {}
         self._commit_sync_row_by_index: dict[int, str | int] = {}
         self._suppress_commit_sync = False
+        self.on_viewport_change = on_viewport_change
+        self._last_top_visible_row_key = None
+        self._last_top_visible_position = None
         super().__init__(*args, **kwargs)
 
     def data_view(self, **kwargs: Any) -> EventStreamDataTransactionView:
@@ -63,6 +66,73 @@ class TransactionView(EventView):
             active_background="_active",
             **kwargs,
         )
+
+    def update_rows(self) -> None:
+        super().update_rows()
+        self._last_top_visible_row_key = None
+        self._last_top_visible_position = None
+
+    def _emit_position_change_notifications(self, force: bool = False) -> None:
+        top_position = self._visible_top_position()
+        movement_alignment = self._movement_alignment(top_position)
+        self._emit_viewport_change_if_needed(top_position, movement_alignment, force=force)
+        self._emit_focus_change_if_needed(movement_alignment, force=force)
+
+    def _visible_top_position(self) -> int | None:
+        if self._last_rendered_size is None or len(self.list_box.body) == 0:
+            return None
+
+        middle, top, _bottom = self.list_box.calculate_visible(self._last_rendered_size, self.has_focus())
+        focus_offset, _focus_inset = self.list_box.get_focus_offset_inset(self._last_rendered_size)
+        if focus_offset == 0 or top.trim > 0:
+            return middle.focus_pos
+        if top.fill:
+            return top.fill[-1].position
+        return middle.focus_pos
+
+    def top_visible_row_key(self) -> str | int | None:
+        position = self._visible_top_position()
+        if position is None:
+            return None
+
+        row_type, row_key = self.list_box.body[position].row_id()
+        return None if row_type is RowType.RESOURCE_BASE else row_key
+
+    def _movement_alignment(self, top_position: int | None) -> Literal["before", "after"] | None:
+        if (
+            top_position is not None
+            and self._last_top_visible_position is not None
+            and top_position != self._last_top_visible_position
+        ):
+            return "after" if top_position > self._last_top_visible_position else "before"
+        return None
+
+    def _top_visible_row_key_at_position(self, top_position: int | None) -> str | int | None:
+        if top_position is None:
+            return None
+
+        row_type, row_key = self.list_box.body[top_position].row_id()
+        return None if row_type is RowType.RESOURCE_BASE else row_key
+
+    def _emit_viewport_change_if_needed(
+        self,
+        top_position: int | None = None,
+        movement_alignment: Literal["before", "after"] | None = None,
+        force: bool = False,
+    ) -> None:
+        if top_position is None:
+            top_position = self._visible_top_position()
+        if movement_alignment is None:
+            movement_alignment = self._movement_alignment(top_position)
+
+        top_row_key = self._top_visible_row_key_at_position(top_position)
+        if force or top_row_key != self._last_top_visible_row_key:
+            self._last_top_visible_row_key = top_row_key
+            self._last_top_visible_position = top_position
+            if self.on_viewport_change is not None:
+                self.on_viewport_change(self, movement_alignment)
+        else:
+            self._last_top_visible_position = top_position
 
     def max_column_header_width(self) -> int:
         if self.stream_data.transaction_event_rows:

@@ -11,7 +11,7 @@ from catscan.widgets.resource_view import SubsetResourceView
 from tests import DummyCommitSyncer, DummyMainLoop, TransactionSyncDataTest
 
 
-class TestResourceViewViewport(TransactionSyncDataTest):
+class TestResourceViewPositionNotifications(TransactionSyncDataTest):
     def test_resource_selection_change_emits_position_notifications(self):
         view, events = self.make_resource_view()
         size = (80, 1)
@@ -21,7 +21,6 @@ class TestResourceViewViewport(TransactionSyncDataTest):
         view.update_selected_row(Selection("core.commit"))
 
         self.assertEqual(view.focused_row(), (RowType.EVENT, "core.commit"))
-        self.assertEqual(view.top_visible_row_key(), "core.commit")
         self.assertEqual(events[-1], "core.commit")
 
     def test_subset_resource_selection_change_emits_position_notifications(self):
@@ -35,7 +34,6 @@ class TestResourceViewViewport(TransactionSyncDataTest):
         view.update_selected_row(Selection("core.commit"))
 
         self.assertEqual(view.focused_row(), (RowType.EVENT, "core.commit"))
-        self.assertEqual(view.top_visible_row_key(), "core.commit")
         self.assertEqual(events[-1], "core.commit")
 
     def test_resource_commit_sync_returns_pushout_events(self):

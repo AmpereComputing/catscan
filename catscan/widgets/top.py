@@ -207,22 +207,27 @@ class Top(urwid.widget.Widget):
     def _create_view(
         self, cls: type[View], name: str, initial_esd: EventStreamData, *args: Any, **kwargs: Any
     ) -> EventView:
+        view_kwargs = {
+            "on_zoom_in": self.zoom_in,
+            "on_zoom_out": self.zoom_out,
+            "on_scroll_left": self.scroll_left,
+            "on_scroll_right": self.scroll_right,
+            "on_toggle_expanded": self.toggle_expanded,
+            "on_make_selection": self.make_selection,
+            "on_extend_selection": self.extend_selection,
+            "on_translate_event": self.translate_event,
+            "on_focus_row_change": self.on_focus_row_change,
+        }
+        if issubclass(cls, TransactionView):
+            view_kwargs["on_viewport_change"] = self.on_viewport_change
+        view_kwargs.update(kwargs)
+
         return cls(
             name,
             self.state,
             initial_esd,
             *args,
-            on_zoom_in=self.zoom_in,
-            on_zoom_out=self.zoom_out,
-            on_scroll_left=self.scroll_left,
-            on_scroll_right=self.scroll_right,
-            on_toggle_expanded=self.toggle_expanded,
-            on_make_selection=self.make_selection,
-            on_extend_selection=self.extend_selection,
-            on_translate_event=self.translate_event,
-            on_viewport_change=self.on_viewport_change,
-            on_focus_row_change=self.on_focus_row_change,
-            **kwargs,
+            **view_kwargs,
         )
 
     def _update_view_rows(self, invalidate: bool = True):

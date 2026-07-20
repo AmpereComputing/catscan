@@ -405,7 +405,6 @@ class EventView(urwid.WidgetWrap, View):
         on_make_selection: Callable,
         on_extend_selection: Callable,
         on_translate_event: Callable,
-        on_viewport_change: Callable | None = None,
         on_focus_row_change: Callable | None = None,
         length_hint: int = 1,
     ) -> None:
@@ -420,7 +419,6 @@ class EventView(urwid.WidgetWrap, View):
         self._on_make_selection = on_make_selection
         self._on_extend_selection = on_extend_selection
         self.on_translate_event = on_translate_event
-        self.on_viewport_change = on_viewport_change
         self.on_focus_row_change = on_focus_row_change
 
         self.list_walker = None
@@ -430,8 +428,6 @@ class EventView(urwid.WidgetWrap, View):
         self._last_mouse_location = None
         self._columns = 0
         self._last_rendered_size = None
-        self._last_top_visible_row_key = None
-        self._last_top_visible_position = None
         self._last_focused_row_key = None
         self._row_positions: dict[str | int, int] = {}
         self._commit_sync_event: str | None = None
@@ -531,8 +527,6 @@ class EventView(urwid.WidgetWrap, View):
                 self.list_walker.append(self.create_empty_row())
 
         self._row_positions = self._build_row_positions()
-        self._last_top_visible_row_key = None
-        self._last_top_visible_position = None
         self._last_focused_row_key = None
         self._invalidate()
 
@@ -591,34 +585,11 @@ class EventView(urwid.WidgetWrap, View):
         return 0, 0
 
     def _emit_position_change_notifications(self, force: bool = False) -> None:
-        top_position = self._visible_top_position()
-        movement_alignment = self._movement_alignment(top_position)
-        self._emit_viewport_change_if_needed(top_position, movement_alignment, force=force)
-        self._emit_focus_change_if_needed(movement_alignment, force=force)
+        self._emit_focus_change_if_needed(None, force=force)
 
     def center_column(self, maxcol: int | None = None) -> int:
         maxcol = maxcol or self._columns
         return self.state.column_header_width + round((maxcol - self.state.column_header_width) / 2)
-
-    def _visible_top_position(self) -> int | None:
-        if self._last_rendered_size is None or len(self.list_box.body) == 0:
-            return None
-
-        middle, top, _bottom = self.list_box.calculate_visible(self._last_rendered_size, self.has_focus())
-        focus_offset, _focus_inset = self.list_box.get_focus_offset_inset(self._last_rendered_size)
-        if focus_offset == 0 or top.trim > 0:
-            return middle.focus_pos
-        if top.fill:
-            return top.fill[-1].position
-        return middle.focus_pos
-
-    def top_visible_row_key(self) -> str | int | None:
-        position = self._visible_top_position()
-        if position is None:
-            return None
-
-        row_type, row_key = self.list_box.body[position].row_id()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
 
     def row_position(self, row_key: str | int) -> int | None:
         return self._row_positions.get(row_key)
@@ -660,42 +631,6 @@ class EventView(urwid.WidgetWrap, View):
 
     def scroll_row_to_top(self, row_key: str | int) -> bool:
         return self.scroll_row_to_edge(row_key, "top")
-
-    def _movement_alignment(self, top_position: int | None) -> Literal["before", "after"] | None:
-        if (
-            top_position is not None
-            and self._last_top_visible_position is not None
-            and top_position != self._last_top_visible_position
-        ):
-            return "after" if top_position > self._last_top_visible_position else "before"
-        return None
-
-    def _top_visible_row_key_at_position(self, top_position: int | None) -> str | int | None:
-        if top_position is None:
-            return None
-
-        row_type, row_key = self.list_box.body[top_position].row_id()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
-
-    def _emit_viewport_change_if_needed(
-        self,
-        top_position: int | None = None,
-        movement_alignment: Literal["before", "after"] | None = None,
-        force: bool = False,
-    ) -> None:
-        if top_position is None:
-            top_position = self._visible_top_position()
-        if movement_alignment is None:
-            movement_alignment = self._movement_alignment(top_position)
-
-        top_row_key = self._top_visible_row_key_at_position(top_position)
-        if force or top_row_key != self._last_top_visible_row_key:
-            self._last_top_visible_row_key = top_row_key
-            self._last_top_visible_position = top_position
-            if self.on_viewport_change is not None:
-                self.on_viewport_change(self, movement_alignment)
-        else:
-            self._last_top_visible_position = top_position
 
     def _emit_focus_change_if_needed(
         self, movement_alignment: Literal["before", "after"] | None, force: bool = False

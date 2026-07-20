@@ -256,8 +256,9 @@ class TransactionSyncDataTest(CatscanDataTest):
         )
         return view, events
 
-    def make_resource_view(self, view_type=ResourceView, **kwargs):
+    def make_resource_view(self, view_type=ResourceView, focus_callback=None, **kwargs):
         events = []
+        focus_callback = focus_callback or (lambda _view, focused_row_key, _align: events.append(focused_row_key))
         view = view_type(
             "resource",
             self.make_state(),
@@ -270,7 +271,7 @@ class TransactionSyncDataTest(CatscanDataTest):
             on_make_selection=lambda *_args, **_kwargs: False,
             on_extend_selection=lambda *_args, **_kwargs: False,
             on_translate_event=lambda *_args, **_kwargs: False,
-            on_viewport_change=lambda view, _align: events.append(view.top_visible_row_key()),
+            on_focus_row_change=focus_callback,
             **kwargs,
         )
         return view, events
