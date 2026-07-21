@@ -71,6 +71,9 @@ class DefaultViews(StrEnum):
     PINNED = auto()
 
 
+COMMIT_SYNC_DISPLAY_STATE_FIELDS = ("cycles_per_char", "expand_rows")
+
+
 class Top(urwid.widget.Widget):
     """
     This widget makes up the top-level user-interface for Catscan. It is
@@ -1117,11 +1120,11 @@ class Top(urwid.widget.Widget):
         preserve_transaction_position: bool = False,
     ) -> None:
         transaction_position = self._transaction_view_position() if preserve_transaction_position else None
-        state_values = {}
-        if sync_state.cycles_per_char is not None:
-            state_values["cycles_per_char"] = sync_state.cycles_per_char
-        if sync_state.expand_rows is not None:
-            state_values["expand_rows"] = sync_state.expand_rows
+        state_values = {
+            field_name: getattr(sync_state, field_name)
+            for field_name in COMMIT_SYNC_DISPLAY_STATE_FIELDS
+            if getattr(sync_state, field_name) is not None
+        }
         if start_ps is not None:
             state_values["start_ps"] = start_ps
 

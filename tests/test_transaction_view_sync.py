@@ -352,6 +352,25 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
         self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
         self.assertEqual(top.state.expand_rows, sync_expand_rows)
 
+    def test_display_state_mapping_applies_only_display_fields(self):
+        top = self.make_top()
+        sync_cycles_per_char = Fraction(1, 8)
+
+        top._apply_commit_sync_display_state(
+            CommitSyncState(
+                sync_index=40,
+                cycles_per_char=sync_cycles_per_char,
+                expand_rows=True,
+                chars_rel_to_start=17,
+                movement_alignment="after",
+            ),
+            start_ps=1230,
+        )
+
+        self.assertEqual(top.state.start_ps, 1230)
+        self.assertEqual(top.state.cycles_per_char, sync_cycles_per_char)
+        self.assertTrue(top.state.expand_rows)
+
     def test_missing_resource_time_sync_index_does_not_scroll_transaction_view(self):
         top = self.make_top()
         top.commit_syncer = DummyCommitSyncer(other_view_mode=DataView.RESOURCE)
