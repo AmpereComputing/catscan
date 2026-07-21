@@ -1013,14 +1013,13 @@ class Top(urwid.widget.Widget):
                 view.start_commit_sync(self.commit_syncer, self.commit_sync_event, self.commit_sync_data_name)
             )
 
-        if self.primary_view_type == DataView.RESOURCE:
+        if pushout_events:
             new_stream_data = self.stream_data
-            if pushout_events:
-                self.saved_stream_data = self.stream_data
-                new_stream_data = self.stream_data.copy_with_events(
-                    pushout_events,
-                    insert_after=self.commit_sync_event,
-                )
+            self.saved_stream_data = self.stream_data
+            new_stream_data = self.stream_data.copy_with_events(
+                pushout_events,
+                insert_after=self.commit_sync_event,
+            )
 
             self.update_stream_data(
                 new_stream_data,
