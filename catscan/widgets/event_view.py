@@ -636,9 +636,6 @@ class EventView(urwid.WidgetWrap, View):
         self._invalidate()
         return True
 
-    def scroll_row_to_top(self, row_key: str | int) -> bool:
-        return self.scroll_row_to_edge(row_key, "top")
-
     def _emit_focus_change_if_needed(
         self, movement_alignment: Literal["before", "after"] | None, force: bool = False
     ) -> None:

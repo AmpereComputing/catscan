@@ -73,12 +73,12 @@ class TestTransactionViewViewport(TransactionSyncDataTest):
         view.mouse_event(size, "mouse drag", 1, 5, 1, True)
         self.assertTrue(events)
 
-    def test_scroll_row_to_top_aligns_requested_row(self):
+    def test_scroll_row_to_edge_top_aligns_requested_row(self):
         view, _events = self.make_transaction_view()
         size = (80, 3)
         view.render(size, focus=True)
 
-        self.assertTrue(view.scroll_row_to_top(self.txids[3]))
+        self.assertTrue(view.scroll_row_to_edge(self.txids[3], "top"))
         self.assertEqual(view.top_visible_row_key(), self.txids[3])
 
     def test_scroll_row_to_bottom_aligns_requested_row(self):
@@ -108,7 +108,7 @@ class TestTransactionViewViewport(TransactionSyncDataTest):
 class TestTopTransactionCommitSync(TransactionSyncDataTest):
     def test_focused_row_with_one_shared_commit_anchors_correctly(self):
         top = self.make_top()
-        top._transaction_view.scroll_row_to_top(self.txids[1])
+        top._transaction_view.scroll_row_to_edge(self.txids[1], "top")
         top.commit_syncer = DummyCommitSyncer(other_commit_index={20: 50})
 
         top.send_commit_sync()
@@ -149,7 +149,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
     def test_earliest_shared_commit_in_row_is_used(self):
         top = self.make_top()
-        top._transaction_view.scroll_row_to_top(self.txids[0])
+        top._transaction_view.scroll_row_to_edge(self.txids[0], "top")
         top.commit_syncer = DummyCommitSyncer(other_commit_index={10: 10, 11: 20})
 
         top.send_commit_sync()
@@ -159,7 +159,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
     def test_row_with_no_shared_commit_sends_display_only_state(self):
         top = self.make_top()
-        top._transaction_view.scroll_row_to_top(self.txids[2])
+        top._transaction_view.scroll_row_to_edge(self.txids[2], "top")
         top.commit_syncer = DummyCommitSyncer(other_commit_index={999: 999}, other_view_mode=DataView.TRANSACTIONS)
 
         top.send_commit_sync()
@@ -247,7 +247,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
     def test_scrolling_up_sends_before_alignment(self):
         top = self.make_top(size=(120, 2))
-        top._transaction_view.scroll_row_to_top(self.txids[2])
+        top._transaction_view.scroll_row_to_edge(self.txids[2], "top")
         top.commit_syncer = DummyCommitSyncer(other_commit_index=top.commit_sync_index)
         top.commit_syncer.sent.clear()
 
@@ -372,7 +372,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
     def test_display_only_sync_does_not_move_transaction_view(self):
         top = self.make_top(size=(120, 3))
-        top._transaction_view.scroll_row_to_top(self.txids[3])
+        top._transaction_view.scroll_row_to_edge(self.txids[3], "top")
         top.update_state(top.state.copy_with(start_ps=1230, cycles_per_char=Fraction(4, 1), expand_rows=False))
         top.commit_syncer = DummyCommitSyncer(other_view_mode=DataView.TRANSACTIONS)
         initial_focus = top._transaction_view.focused_row()[1]
@@ -393,7 +393,7 @@ class TestTopTransactionCommitSync(TransactionSyncDataTest):
 
     def test_expand_only_display_sync_preserves_transaction_view_and_zoom(self):
         top = self.make_top(size=(120, 3))
-        top._transaction_view.scroll_row_to_top(self.txids[3])
+        top._transaction_view.scroll_row_to_edge(self.txids[3], "top")
         top.update_state(top.state.copy_with(start_ps=1230, cycles_per_char=Fraction(4, 1), expand_rows=False))
         top.commit_syncer = DummyCommitSyncer(other_view_mode=DataView.TRANSACTIONS)
         initial_focus = top._transaction_view.focused_row()[1]
