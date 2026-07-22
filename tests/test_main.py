@@ -16,7 +16,7 @@ import urwid
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
-from catscan.__main__ import load_mapping_file_abbreviations, setup
+from catscan.__main__ import XTERM_ENABLE_ALL_MOTION, load_mapping_file_abbreviations, setup
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 from catscan.state import HoverTarget
@@ -244,6 +244,18 @@ class TestMain(CatscanDataTest):
         self.assertIn("Loading (100%)", out)
         for event in range(TOTAL_EVENTS):
             self.assertIn(f"event_{event}", out)
+
+    def test_enables_hover_tracking_after_screen_start(self):
+        top = setup(self.args(), screen=self.screen)
+        before_start = self.screen.read_all()
+
+        try:
+            top.main_loop.screen.start()
+            after_start = self.screen.read_all()
+        finally:
+            top.main_loop.screen.stop()
+
+        self.assertGreater(after_start.count(XTERM_ENABLE_ALL_MOTION), before_start.count(XTERM_ENABLE_ALL_MOTION))
 
     def test_help(self):
         out = self.run_catscan(self.args(), (1, "?"), (2, "q"))
