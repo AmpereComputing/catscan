@@ -20,6 +20,8 @@ from catscan.__main__ import XTERM_ENABLE_ALL_MOTION, load_mapping_file_abbrevia
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 from catscan.state import HoverTarget
+from catscan.widgets.event_sidebar import EventDetailDataText
+from catscan.widgets.top import HoverPopup
 
 TOTAL_EVENTS = 20
 PS_PER_CYCLE = 100
@@ -325,6 +327,21 @@ class TestMain(CatscanDataTest):
         self.assertIn("hover:on", text)
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
 
+    def test_hover_popup_single_event_bolds_data_names(self):
+        canvas = HoverPopup(["time: 100 ps", "event.value: 1"], bold_labels=True).render((24, 4), True)
+        rows = list(canvas.content())
+
+        self.assertEqual("data_name", rows[1][1][0])
+        self.assertEqual(b"time:", rows[1][1][2])
+        self.assertEqual("data_name", rows[2][1][0])
+        self.assertEqual(b"event.value:", rows[2][1][2])
+
+    def test_hover_popup_range_does_not_bold_abbreviations(self):
+        canvas = HoverPopup(["e0: 2 (100.00%)"], bold_labels=False).render((24, 3), True)
+        row = list(canvas.content())[1]
+
+        self.assertNotIn("data_name", [attr for attr, _cs, _text in row])
+
     def test_hover_popup_omits_visible_abbrev(self):
         top = self.loaded_top()
         event = self.first_event("event_0")
@@ -374,3 +391,12 @@ class TestMain(CatscanDataTest):
 
         self.assertLess(left, top._hover_cell[0])
         self.assertLessEqual(left + 20, view_right)
+
+    def test_event_detail_data_text_bolds_data_name(self):
+        canvas = EventDetailDataText("event.value", "42", 0, 11).render((20,), False)
+        row = list(canvas.content())[0]
+
+        self.assertEqual("even_event_row_data_name", row[0][0])
+        self.assertEqual(b"event.value:", row[0][2])
+        self.assertEqual("even_event_row", row[1][0])
+        self.assertIn(b"42", row[1][2])

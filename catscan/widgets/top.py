@@ -84,8 +84,9 @@ class HoverPopup(urwid.widget.Widget):
     MAX_WIDTH = 72
     MAX_HEIGHT = 16
 
-    def __init__(self, lines: Sequence[str]) -> None:
+    def __init__(self, lines: Sequence[str], bold_labels: bool = False) -> None:
         self.lines = list(lines)
+        self.bold_labels = bold_labels
         super().__init__()
 
     @property
@@ -96,6 +97,21 @@ class HoverPopup(urwid.widget.Widget):
     @property
     def desired_height(self) -> int:
         return max(3, min(len(self.lines) + 2, self.MAX_HEIGHT))
+
+    def _row_attrs(self, line: str, inner_width: int) -> tuple[bytes, list[tuple[str | None, int]]]:
+        fitted = str_fit_width(line, inner_width)
+        padding = " " * (inner_width - str_width(fitted))
+        row = "│" + fitted + padding + "│"
+
+        if not self.bold_labels or ":" not in fitted:
+            return row.encode(), [(None, len(row.encode()))]
+
+        label_end = fitted.index(":") + 1
+        return row.encode(), [
+            (None, len("│".encode())),
+            ("data_name", len(fitted[:label_end].encode())),
+            (None, len((fitted[label_end:] + padding + "│").encode())),
+        ]
 
     def render(
         self,
@@ -109,15 +125,20 @@ class HoverPopup(urwid.widget.Widget):
         inner_width = maxcol - 2
         body_height = maxrow - 2
         rows = ["┌" + "─" * inner_width + "┐"]
+        attrs = [[(None, len(rows[0].encode()))]]
         for line in self.lines[:body_height]:
-            fitted = str_fit_width(line, inner_width)
-            rows.append("│" + fitted + " " * (inner_width - str_width(fitted)) + "│")
+            row, row_attrs = self._row_attrs(line, inner_width)
+            rows.append(row.decode())
+            attrs.append(row_attrs)
 
         while len(rows) < maxrow - 1:
-            rows.append("│" + " " * inner_width + "│")
+            row = "│" + " " * inner_width + "│"
+            rows.append(row)
+            attrs.append([(None, len(row.encode()))])
 
         rows.append("└" + "─" * inner_width + "┘")
-        return urwid.canvas.TextCanvas([row.encode() for row in rows])
+        attrs.append([(None, len(rows[-1].encode()))])
+        return urwid.canvas.TextCanvas([row.encode() for row in rows], attrs)
 
 
 class Top(urwid.widget.Widget):
@@ -420,10 +441,10 @@ class Top(urwid.widget.Widget):
             return event
         return None
 
-    def _hover_popup_lines(self) -> list[str]:
+    def _hover_popup_content(self) -> tuple[list[str], bool]:
         hover = self._hover_target
         if not hover:
-            return []
+            return [], False
 
         if event := self._single_event_for_hover(hover):
             cycles = round(event.time // self.state.ps_per_cycle)
@@ -433,13 +454,17 @@ class Top(urwid.widget.Widget):
             if not hover.abbrev_visible:
                 lines.insert(0, f"abbrev: {event.abbrev}")
             lines.extend(f"{name}: {value}" for name, value in self._format_hover_data(event).items())
-            return lines
+            return lines, True
 
         histogram = summary_histogram(
             self._data_view_for_hover(hover).get(hover.event_row)[hover.start_ps : hover.end_ps]
         )
         total = histogram.total()
-        return [f"{abbrev}: {count} ({count / total:.2%})" for abbrev, count in histogram.most_common(99)]
+        return [f"{abbrev}: {count} ({count / total:.2%})" for abbrev, count in histogram.most_common(99)], False
+
+    def _hover_popup_lines(self) -> list[str]:
+        lines, _bold_labels = self._hover_popup_content()
+        return lines
 
     def _overlay_hover_popup(
         self, canvas: urwid.Canvas, size: tuple[int, int], focus: bool = False
@@ -447,7 +472,8 @@ class Top(urwid.widget.Widget):
         if not self._hover_target or self._hover_cell is None:
             return canvas
 
-        popup = HoverPopup(self._hover_popup_lines())
+        lines, bold_labels = self._hover_popup_content()
+        popup = HoverPopup(lines, bold_labels=bold_labels)
         width = min(popup.desired_width, size[0])
         height = min(popup.desired_height, size[1])
         left, top = self._hover_popup_position(width, height, size)

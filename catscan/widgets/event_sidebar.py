@@ -113,6 +113,12 @@ class EventDetailDataText(urwid.widget.Widget):
         # value
         self.line_wrapper = textwrap.TextWrapper(expand_tabs=False, break_on_hyphens=False)
 
+    def _segments_to_canvas_row(self, segments: list[tuple[str, str]]) -> tuple[bytes, list[tuple[str, int]]]:
+        line = "".join(text for _attr, text in segments)
+        byte_string = line.encode()
+        attrs = [(attr, len(text.encode())) for attr, text in segments if text]
+        return byte_string, attrs
+
     def rows(self, size: tuple[int], focus: bool = False) -> int:
         (maxcol,) = size
         self.line_wrapper.width = maxcol
@@ -135,6 +141,7 @@ class EventDetailDataText(urwid.widget.Widget):
         attr = f"{even_odd(self.row_idx)}_event_row"
         if focus:
             attr = "focused_event_row"
+        name_attr = f"{attr}_data_name"
 
         def pad_right(string: str) -> str:
             return string + " " * (maxcol - len(string))
@@ -142,28 +149,39 @@ class EventDetailDataText(urwid.widget.Widget):
         def pad_left(string: str) -> str:
             return " " * (maxcol - len(string)) + string
 
+        def key_header_segments() -> list[tuple[str, str]]:
+            return [
+                (name_attr, self.key),
+                (attr, " " * max(0, self.split - len(self.key))),
+                (name_attr, ":"),
+            ]
+
+        def value_segments(value: str) -> list[tuple[str, str]]:
+            return [(attr, value)]
+
         lines = []
 
         name_len = len(self.key)
         value_len = len(self.value)
         max_value_len = maxcol - 2 - self.split
         if name_len <= self.split and max_value_len >= value_len:
-            lines.append(pad_right(f"{self.key:<{self.split}}: {self.value:<{max_value_len}}"))
+            lines.append([*key_header_segments(), (attr, f" {self.value:<{max_value_len}}")])
         else:
             header = f"{self.key:<{self.split}}:"
             if len(header) <= maxcol:
-                lines.append(pad_right(header))
+                lines.append([*key_header_segments(), (attr, " " * (maxcol - len(header)))])
             else:
-                lines += self.line_wrapper.wrap(header)
+                lines += [[(name_attr, line)] for line in self.line_wrapper.wrap(header)]
             if value_len <= max_value_len:
-                lines.append(pad_left(f"{self.value:<{max_value_len}}"))
+                lines.append(value_segments(pad_left(f"{self.value:<{max_value_len}}")))
             elif value_len <= maxcol:
-                lines.append(pad_left(f"{self.value:>{maxcol}}"))
+                lines.append(value_segments(pad_left(f"{self.value:>{maxcol}}")))
             else:
-                lines += self.line_wrapper.wrap(self.value)
+                lines += [value_segments(line) for line in self.line_wrapper.wrap(self.value)]
 
-        byte_strings = [line.encode() for line in lines]
-        attrs = [[(attr, len(byte_string))] for byte_string in byte_strings]
+        canvas_rows = [self._segments_to_canvas_row(line) for line in lines]
+        byte_strings = [row for row, _attrs in canvas_rows]
+        attrs = [row_attrs for _row, row_attrs in canvas_rows]
 
         return urwid.canvas.TextCanvas(byte_strings, attrs)
 
