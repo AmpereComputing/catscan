@@ -280,6 +280,15 @@ class TestMain(CatscanDataTest):
         self.assertFalse(top.clear_hover())
         self.assertEqual(4, len(invalidations))
 
+    def test_status_bar_shows_hover_enabled(self):
+        top = self.loaded_top()
+
+        canvas = top.render((120, 40), True)
+        text = self.canvas_text(canvas.text)
+
+        self.assertTrue(top.hover_tracking_enabled)
+        self.assertIn("hover:on", text)
+
     def test_hover_popup_single_event_contains_data(self):
         top = self.loaded_top()
         top._current_mouse_cell = (20, 4)
@@ -291,6 +300,8 @@ class TestMain(CatscanDataTest):
 
         self.assertIn(event.abbrev, text)
         self.assertIn("event.value: 0", text)
+        self.assertIn("hover:on", text)
+        self.assertNotIn(f"hover event_0: {event.abbrev}", text)
 
     def test_hover_popup_range_contains_histogram(self):
         top = self.loaded_top()

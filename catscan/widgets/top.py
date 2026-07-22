@@ -169,6 +169,7 @@ class Top(urwid.widget.Widget):
         self._hover_cell = None
         self._hover_key = self._hover_target.key()
         self._current_mouse_cell = None
+        self.hover_tracking_enabled = False
 
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
@@ -370,9 +371,10 @@ class Top(urwid.widget.Widget):
         if self.commit_syncer and not self.commit_syncer.stopped:
             symbol = "⇄" if self.commit_syncer.syncing else "⏸"
             sync_status = f" | {symbol} {self.commit_syncer.fifo_basename}"
+        hover_status = " | hover:on" if self.hover_tracking_enabled else ""
         icon = "🐈" if self.state.has_focus else "⏾ "
         return (
-            f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
+            f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}{hover_status}",
             self.stream_data.source,
         )
 

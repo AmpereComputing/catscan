@@ -70,16 +70,16 @@ def load_mapping_file_abbreviations(mapping_files: list[str]) -> list[DynamicAbb
     return abbreviations
 
 
-def enable_mouse_hover_tracking(screen: urwid.BaseScreen) -> None:
+def enable_mouse_hover_tracking(screen: urwid.BaseScreen) -> bool:
     screen.set_mouse_tracking(True)
 
     if not hasattr(screen, "write"):
-        return
+        return False
 
     screen.write(XTERM_ENABLE_ALL_MOTION)
 
     if getattr(screen, "_catscan_hover_tracking_wrapped", False):
-        return
+        return True
 
     original_stop = screen.stop
 
@@ -89,6 +89,7 @@ def enable_mouse_hover_tracking(screen: urwid.BaseScreen) -> None:
 
     screen.stop = stop_with_hover_restore
     screen._catscan_hover_tracking_wrapped = True
+    return True
 
 
 def parse_args() -> argparse.Namespace:
@@ -300,7 +301,7 @@ def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> T
     loop.screen.set_terminal_properties(colors)
     loop.screen.reset_default_terminal_palette()
     loop.screen.focus_reporting = True
-    enable_mouse_hover_tracking(loop.screen)
+    top.hover_tracking_enabled = enable_mouse_hover_tracking(loop.screen)
 
     dynamic_abbreviations = (
         args.value_string_abbrev + args.value_map_abbrev + load_mapping_file_abbreviations(args.mapping_file)
