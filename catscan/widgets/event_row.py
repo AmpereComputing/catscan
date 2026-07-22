@@ -13,7 +13,7 @@ import urwid
 from catscan.data import NUM_EVENT_COLORS, Event, EventData, TransactionEventData
 from catscan.search import Searcher
 from catscan.state import CatscanState, HashableFrozenDict, HoverTarget, Selection
-from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents
+from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents, is_mouse_hover_event
 from catscan.util import even_odd_focused, str_fit_width
 
 
@@ -903,7 +903,7 @@ class EventRow(EventRowBase):
         row: int,
         focus: bool,
     ) -> bool | None:
-        if button == 0 and event.endswith(("mouse drag", "mouse press")):
+        if is_mouse_hover_event(event, button):
             if self.on_hover:
                 self.on_hover(self.mouse_to_hover(col, row))
             return True

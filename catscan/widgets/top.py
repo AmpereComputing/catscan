@@ -46,6 +46,7 @@ from catscan.user_input import (
     KEYPRESS_COMBINATION_TIMEOUT,
     action_keypresses,
     action_mouseevents,
+    is_mouse_hover_event,
 )
 from catscan.util import glob_to_pattern, hex_args_to_re, str_fit_width, str_width
 from catscan.widgets.ampere_logo import AmpereLogo
@@ -170,6 +171,7 @@ class Top(urwid.widget.Widget):
         self._hover_key = self._hover_target.key()
         self._current_mouse_cell = None
         self.hover_tracking_enabled = False
+        self.hover_tracking_supported = False
 
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
@@ -371,7 +373,11 @@ class Top(urwid.widget.Widget):
         if self.commit_syncer and not self.commit_syncer.stopped:
             symbol = "⇄" if self.commit_syncer.syncing else "⏸"
             sync_status = f" | {symbol} {self.commit_syncer.fifo_basename}"
-        hover_status = " | hover:on" if self.hover_tracking_enabled else ""
+        hover_status = ""
+        if self.hover_tracking_supported:
+            hover_status = " | hover:on"
+        elif self.hover_tracking_enabled:
+            hover_status = " | hover:armed"
         icon = "🐈" if self.state.has_focus else "⏾ "
         return (
             f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}{hover_status}",
@@ -907,6 +913,9 @@ class Top(urwid.widget.Widget):
         return self.update_state(new_state)
 
     def on_hover(self, hover: HoverTarget) -> bool:
+        if hover and not self.hover_tracking_supported:
+            self.hover_tracking_supported = True
+
         cell = self._current_mouse_cell
         key = hover.key(cell)
         if key == self._hover_key:
@@ -1780,7 +1789,10 @@ class Top(urwid.widget.Widget):
     ) -> bool | None:
         self._current_mouse_cell = (col, row)
         keyless_event = re.sub(r"^.*?mouse", "mouse", event)
-        hover_event = button == 0 and keyless_event in ("mouse drag", "mouse press")
+        hover_event = is_mouse_hover_event(event, button)
+        if hover_event and not self.hover_tracking_supported:
+            self.hover_tracking_supported = True
+            self._invalidate()
         original_event = event
         if hover_event and (self.state.show_help or len(self.state.messages) > 0):
             self.clear_hover()

@@ -187,3 +187,16 @@ def translate_mouseevent(readable_name: str) -> tuple[str, int]:
 action_mouseevents = {
     action: list(map(translate_mouseevent, events)) for action, events in action_mouseevents_pretranslated.items()
 }
+
+
+def is_mouse_hover_event(event: str, button: int) -> bool:
+    """
+    Return true for no-button mouse motion decoded by urwid.
+
+    Legacy mouse mode reports no-button all-motion as button 0. SGR mouse mode
+    reports xterm button code 35 as "mouse drag" with button 4, which overlaps
+    with scroll-wheel numbering but has a different action.
+    """
+    return (button == 0 and event.endswith(("mouse drag", "mouse press", "mouse release"))) or (
+        button == 4 and event.endswith("mouse drag")
+    )

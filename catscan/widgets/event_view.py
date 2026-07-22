@@ -12,7 +12,7 @@ from perf_streams.event_stream import Event
 from catscan.commit_sync import CommitSyncer
 from catscan.data import EventStreamData, EventStreamDataEventView, EventStreamDataView
 from catscan.state import CatscanState, HoverTarget, Selection
-from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents
+from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents, is_mouse_hover_event
 from catscan.widgets.event_row import EventRow, EventRowBase, RowType
 from catscan.widgets.scrollbar import FixedWidthScrollBar
 from catscan.widgets.separators import HorizontalBorder, MiddleBorder
@@ -697,7 +697,7 @@ class EventView(urwid.WidgetWrap, View):
         focus: bool,
     ) -> bool | None:
         eb = (event, button)
-        is_hover_event = button == 0 and event.endswith(("mouse drag", "mouse press"))
+        is_hover_event = is_mouse_hover_event(event, button)
         mouse_diff = (0, 0)
         if self._last_mouse_location is not None:
             mouse_diff = (col - self._last_mouse_location[0], row - self._last_mouse_location[1])
