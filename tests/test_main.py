@@ -320,7 +320,7 @@ class TestMain(CatscanDataTest):
 
         self.assertIn(event.abbrev, text)
         self.assertIn("event.value: 0", text)
-        self.assertIn("row: event_0", text)
+        self.assertNotIn("row: event_0", text)
         self.assertNotIn(event.name, top._hover_popup_lines())
         self.assertIn("hover:on", text)
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
@@ -333,7 +333,8 @@ class TestMain(CatscanDataTest):
         lines = top._hover_popup_lines()
 
         self.assertNotIn(f"abbrev: {event.abbrev}", lines)
-        self.assertIn("row: event_0", lines)
+        self.assertNotIn("row: event_0", lines)
+        self.assertTrue(lines[0].startswith("time:"))
 
     def test_hover_popup_range_contains_histogram(self):
         top = self.loaded_top()
@@ -359,6 +360,17 @@ class TestMain(CatscanDataTest):
         text = self.canvas_text(canvas.text)
 
         self.assertIs(top.event_details, top.columns.contents[1][0])
-        self.assertIn("row: event_1", text)
+        self.assertNotIn("row: event_1", text)
         self.assertIn(f"abbrev: {hover_event.abbrev}", text)
         self.assertNotIn("hover event_1", text)
+
+    def test_hover_popup_prefers_away_from_sidebar(self):
+        top = self.loaded_top()
+        top.make_selection(self.first_event("event_0"))
+        view_right = 120 - top.sidebar_width - 1
+        top._hover_cell = (view_right - 1, 4)
+
+        left, _top = top._hover_popup_position(20, 5, (120, 40))
+
+        self.assertLess(left, top._hover_cell[0])
+        self.assertLessEqual(left + 20, view_right)

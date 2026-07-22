@@ -426,14 +426,12 @@ class Top(urwid.widget.Widget):
             return []
 
         if event := self._single_event_for_hover(hover):
-            row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
             cycles = round(event.time // self.state.ps_per_cycle)
             lines = [
-                f"row: {row_name}",
                 f"time: {event.time:,} ps / {cycles:,} cyc",
             ]
             if not hover.abbrev_visible:
-                lines.insert(1, f"abbrev: {event.abbrev}")
+                lines.insert(0, f"abbrev: {event.abbrev}")
             lines.extend(f"{name}: {value}" for name, value in self._format_hover_data(event).items())
             return lines
 
@@ -452,17 +450,28 @@ class Top(urwid.widget.Widget):
         popup = HoverPopup(self._hover_popup_lines())
         width = min(popup.desired_width, size[0])
         height = min(popup.desired_height, size[1])
-        col, row = self._hover_cell
-        left = col + 2
-        if left + width > size[0]:
-            left = max(0, col - width - 1)
-        top = row + 1
-        if top + height > size[1]:
-            top = max(0, row - height - 1)
+        left, top = self._hover_popup_position(width, height, size)
 
         canvas = urwid.CompositeCanvas(canvas)
         canvas.overlay(urwid.CompositeCanvas(popup.render((width, height), focus)), left=left, top=top)
         return canvas
+
+    def _hover_popup_position(self, width: int, height: int, size: tuple[int, int]) -> tuple[int, int]:
+        col, row = self._hover_cell
+        left = col + 2
+        right_limit = size[0]
+        if self.state.selection:
+            right_limit = max(0, size[0] - self.sidebar_width - 1)
+
+        if left + width > right_limit:
+            left = max(0, col - width - 1)
+        if left + width > size[0]:
+            left = max(0, size[0] - width)
+
+        top = row + 1
+        if top + height > size[1]:
+            top = max(0, row - height - 1)
+        return left, top
 
     def load_file(
         self,
