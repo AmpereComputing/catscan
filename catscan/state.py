@@ -188,6 +188,78 @@ class Selection:
         return f"<selected row {self.event_row} from {self.start_ps}ps to {self.end_ps}ps>"
 
 
+class HoverTarget:
+    """
+    The event row content under the mouse cursor. This is intentionally close
+    to Selection, but hover keeps aggregate cells as time ranges so moving over
+    a collapsed single-event cell does not behave like an explicit click.
+    """
+
+    def __init__(
+        self,
+        event_row: str | int | None = None,
+        event: Event | None = None,
+        time_range: tuple[int, int] | None = None,
+        within_transaction: bool = False,
+        view: str | None = None,
+    ):
+        assert not (event and time_range)
+        assert event_row or not (event or time_range)
+
+        self._event_row = event_row
+        self._event = event
+        self._time_range = time_range
+        self._within_transaction = within_transaction
+        self._view = view
+
+    @property
+    def event_row(self) -> str | int:
+        return self._event_row
+
+    @property
+    def event(self) -> Event:
+        assert self.is_event()
+        return self._event
+
+    @property
+    def view(self) -> str:
+        return self._view
+
+    def is_event(self) -> bool:
+        return self._event is not None
+
+    def is_time_range(self) -> bool:
+        return self._time_range is not None
+
+    def within_transaction(self) -> bool:
+        return self._within_transaction
+
+    @property
+    def start_ps(self) -> int:
+        assert self.is_event() or self.is_time_range()
+        if self.is_event():
+            return self.event.time
+        return self._time_range[0]
+
+    @property
+    def end_ps(self) -> int:
+        assert self.is_time_range()
+        return self._time_range[1]
+
+    def assign_view(self, view: str) -> None:
+        self._view = view
+
+    def key(self, cell: tuple[int, int] | None = None) -> tuple:
+        if not self:
+            return ("empty",)
+        if self.is_event():
+            return ("event", self.view, self.event_row, self.event.id, cell)
+        return ("range", self.view, self.event_row, self.start_ps, self.end_ps, cell)
+
+    def __bool__(self) -> bool:
+        return self.event_row is not None
+
+
 class CatscanState(NamedTuple):
     """
     CatscanState holds the main state of the application. (Almost) whenever the

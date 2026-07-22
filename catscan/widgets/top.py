@@ -38,7 +38,7 @@ from catscan.search import (
     PerPeriodSearcher,
     TextSearcher,
 )
-from catscan.state import CatscanState, HashableFrozenDict, Selection
+from catscan.state import CatscanState, HashableFrozenDict, HoverTarget, Selection
 from catscan.summary import generate_summary_table
 from catscan.user_input import (
     ACTIONS,
@@ -47,7 +47,7 @@ from catscan.user_input import (
     action_keypresses,
     action_mouseevents,
 )
-from catscan.util import glob_to_pattern, hex_args_to_re
+from catscan.util import glob_to_pattern, hex_args_to_re, str_fit_width, str_width
 from catscan.widgets.ampere_logo import AmpereLogo
 from catscan.widgets.event_row import RowType
 from catscan.widgets.event_sidebar import EventDetail
@@ -72,6 +72,50 @@ class DefaultViews(StrEnum):
 
 
 COMMIT_SYNC_DISPLAY_STATE_FIELDS = ("cycles_per_char", "expand_rows")
+
+
+class HoverPopup(urwid.widget.Widget):
+    """Small hover popup rendered as a boxed text canvas."""
+
+    _sizing = frozenset(["box"])
+    _selectable = False
+    MAX_WIDTH = 72
+    MAX_HEIGHT = 16
+
+    def __init__(self, lines: Sequence[str]) -> None:
+        self.lines = list(lines)
+        super().__init__()
+
+    @property
+    def desired_width(self) -> int:
+        content_width = max([str_width(line) for line in self.lines] or [0])
+        return max(4, min(content_width + 2, self.MAX_WIDTH))
+
+    @property
+    def desired_height(self) -> int:
+        return max(3, min(len(self.lines) + 2, self.MAX_HEIGHT))
+
+    def render(
+        self,
+        size: tuple[()] | tuple[int] | tuple[int, int],
+        focus: bool = False,
+    ) -> urwid.canvas.Canvas:
+        maxcol, maxrow = size
+        if maxcol < 2 or maxrow < 2:
+            return urwid.canvas.TextCanvas([(" " * maxcol).encode()] * maxrow)
+
+        inner_width = maxcol - 2
+        body_height = maxrow - 2
+        rows = ["┌" + "─" * inner_width + "┐"]
+        for line in self.lines[:body_height]:
+            fitted = str_fit_width(line, inner_width)
+            rows.append("│" + fitted + " " * (inner_width - str_width(fitted)) + "│")
+
+        while len(rows) < maxrow - 1:
+            rows.append("│" + " " * inner_width + "│")
+
+        rows.append("└" + "─" * inner_width + "┘")
+        return urwid.canvas.TextCanvas([row.encode() for row in rows])
 
 
 class Top(urwid.widget.Widget):
@@ -121,6 +165,10 @@ class Top(urwid.widget.Widget):
         self.last_mouse_press_button = 0
         self.last_mouse_release_button = 0
         self.last_mouse_release_time = None
+        self._hover_target = HoverTarget()
+        self._hover_cell = None
+        self._hover_key = self._hover_target.key()
+        self._current_mouse_cell = None
 
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
@@ -230,6 +278,7 @@ class Top(urwid.widget.Widget):
             self.state,
             initial_esd,
             *args,
+            on_hover=self.on_hover,
             **view_kwargs,
         )
 
@@ -326,6 +375,110 @@ class Top(urwid.widget.Widget):
             f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
             self.stream_data.source,
         )
+
+    def _data_view_for_hover(self, hover: HoverTarget) -> Any:
+        return self.stream_data.transaction_events() if hover.within_transaction() else self.stream_data.events()
+
+    def _format_hover_data(self, event: Event) -> dict[str, Any]:
+        def strip_prefix(to_strip: str, to_compare: str) -> str:
+            def prefix(s: str) -> str:
+                return ".".join(s.split(".")[:-1])
+
+            if prefix(to_strip) == prefix(to_compare):
+                return to_strip.split(".")[-1]
+            return to_strip
+
+        def format_as_hex(item: tuple[str, Any]) -> tuple[str, Any]:
+            name, value = item
+            if self.hexargs_re.match(name):
+                if isinstance(value, str):
+                    return name, hex(int(value, base=0))
+                return name, hex(value)
+            return item
+
+        display_data = dict(map(format_as_hex, event.data.items()))
+        if self.state.sort_event_keys:
+            display_data = dict(sorted(display_data.items()))
+        return {strip_prefix(name, event.name): value for name, value in display_data.items()}
+
+    def _hover_status_text(self) -> str:
+        hover = self._hover_target
+        if not hover:
+            return ""
+
+        row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
+        if hover.is_event():
+            event = hover.event
+            cycles = round(event.time // self.state.ps_per_cycle)
+            data = " ".join(f"{name}={value}" for name, value in self._format_hover_data(event).items())
+            data = f" | {data}" if data else ""
+            return f"hover {row_name}: {event.abbrev} @ {cycles:,} cyc ({event.name}){data}"
+
+        cycle_span = (hover.end_ps - hover.start_ps) // self.state.ps_per_cycle
+        header, contents, _footer = generate_summary_table(
+            self._data_view_for_hover(hover),
+            hover.start_ps,
+            hover.end_ps,
+            [hover.event_row],
+            None,
+        )
+        summary = ", ".join(f"{row[0].strip()} {row[1]}" for row in contents[:3])
+        return f"hover {row_name}: {cycle_span:,} cycles | {header[0]}: {summary}"
+
+    def _hover_popup_lines(self) -> list[str]:
+        hover = self._hover_target
+        if not hover:
+            return []
+
+        row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
+        if hover.is_event():
+            event = hover.event
+            cycles = round(event.time // self.state.ps_per_cycle)
+            lines = [
+                event.name,
+                f"row: {row_name}",
+                f"abbrev: {event.abbrev}",
+                f"time: {event.time:,} ps / {cycles:,} cyc",
+            ]
+            lines.extend(f"{name}: {value}" for name, value in self._format_hover_data(event).items())
+            return lines
+
+        picosecond_span = hover.end_ps - hover.start_ps
+        cycle_span = picosecond_span // self.state.ps_per_cycle
+        header, contents, footer = generate_summary_table(
+            self._data_view_for_hover(hover),
+            hover.start_ps,
+            hover.end_ps,
+            [hover.event_row],
+            None,
+        )
+        lines = [f"Summary of {row_name}", f"{cycle_span:,} cycles ({picosecond_span:,} ps)"]
+        lines.append(" | ".join(header))
+        lines.extend(" | ".join(row) for row in contents)
+        if footer:
+            lines.append(" | ".join(footer))
+        return lines
+
+    def _overlay_hover_popup(
+        self, canvas: urwid.Canvas, size: tuple[int, int], focus: bool = False
+    ) -> urwid.CompositeCanvas:
+        if not self._hover_target or self._hover_cell is None:
+            return canvas
+
+        popup = HoverPopup(self._hover_popup_lines())
+        width = min(popup.desired_width, size[0])
+        height = min(popup.desired_height, size[1])
+        col, row = self._hover_cell
+        left = col + 2
+        if left + width > size[0]:
+            left = max(0, col - width - 1)
+        top = row + 1
+        if top + height > size[1]:
+            top = max(0, row - height - 1)
+
+        canvas = urwid.CompositeCanvas(canvas)
+        canvas.overlay(urwid.CompositeCanvas(popup.render((width, height), focus)), left=left, top=top)
+        return canvas
 
     def load_file(
         self,
@@ -459,7 +612,10 @@ class Top(urwid.widget.Widget):
             self.status_bar.set_text(f"Loading ({self.loading_pct}%)...", None)
             canvas = self.frame.render(size, focus and not showing_popup)
         else:
-            self.status_bar.set_text(*self.get_status())
+            status_text, source_text = self.get_status()
+            if self.state.selection and self._hover_target:
+                status_text = self._hover_status_text()
+            self.status_bar.set_text(status_text, source_text)
             if self.state.selection:
                 sidebar = self.event_details if self.state.selection.is_event() else self.summary_sidebar
                 self.columns.contents = [
@@ -480,6 +636,8 @@ class Top(urwid.widget.Widget):
             canvas = self.help.overlay(canvas, size, focus)
         elif showing_messages:
             canvas = self.messages.overlay(canvas, size, focus)
+        elif not self.state.selection:
+            canvas = self._overlay_hover_popup(canvas, size, focus)
         return canvas
 
     def update_stream_data(
@@ -505,6 +663,7 @@ class Top(urwid.widget.Widget):
         self.view_rows.update_stream_data(stream_data)
         self.event_details.update_stream_data(stream_data)
         self.summary_sidebar.update_stream_data(stream_data)
+        self.clear_hover()
 
         max_column_width = max([self.view_rows.max_column_header_width(), external_column_width])
         new_state = self.state.copy_with(
@@ -545,8 +704,20 @@ class Top(urwid.widget.Widget):
 
         if new_state != self.state:
             old_state = self.state
-            should_send_commit_sync = not external_sync and not old_state.compare(
-                new_state, "ps_per_cycle", "column_header_width", "cycles_per_char", "expand_rows", "start_ps"
+            layout_changed = (
+                new_state.ps_per_cycle != old_state.ps_per_cycle
+                or new_state.column_header_width != old_state.column_header_width
+                or new_state.cycles_per_char != old_state.cycles_per_char
+                or new_state.expand_rows != old_state.expand_rows
+                or new_state.start_ps != old_state.start_ps
+            )
+            should_send_commit_sync = not external_sync and layout_changed
+            hover_stale = (
+                layout_changed
+                or new_state.selection != old_state.selection
+                or new_state.loading != old_state.loading
+                or new_state.messages != old_state.messages
+                or new_state.show_help != old_state.show_help
             )
 
             self.state = new_state
@@ -560,6 +731,8 @@ class Top(urwid.widget.Widget):
 
             if new_state.expand_rows != old_state.expand_rows:
                 self._update_view_rows(invalidate=False)
+            if hover_stale:
+                self.clear_hover()
             self._invalidate()
 
             if should_send_commit_sync:
@@ -730,6 +903,21 @@ class Top(urwid.widget.Widget):
         self.frame.focus_position = "body"
         new_state = self.state.copy_with(selection=Selection())
         return self.update_state(new_state)
+
+    def on_hover(self, hover: HoverTarget) -> bool:
+        cell = self._current_mouse_cell
+        key = hover.key(cell)
+        if key == self._hover_key:
+            return False
+
+        self._hover_target = hover
+        self._hover_cell = cell if hover else None
+        self._hover_key = key
+        self._invalidate()
+        return True
+
+    def clear_hover(self) -> bool:
+        return self.on_hover(HoverTarget())
 
     def translate_event(self, x_chars: int) -> bool:
         if x_chars == 0:
@@ -1588,9 +1776,13 @@ class Top(urwid.widget.Widget):
         row: int,
         focus: bool,
     ) -> bool | None:
+        self._current_mouse_cell = (col, row)
         keyless_event = re.sub(r"^.*?mouse", "mouse", event)
+        hover_event = button == 0 and keyless_event in ("mouse drag", "mouse press")
         original_event = event
-        if keyless_event == "mouse press":
+        if hover_event and (self.state.show_help or len(self.state.messages) > 0):
+            self.clear_hover()
+        elif keyless_event == "mouse press":
             # Track last mouse press as release does not always have a button
             self.last_mouse_press_button = button
         elif keyless_event == "mouse drag":
@@ -1628,7 +1820,7 @@ class Top(urwid.widget.Widget):
         else:
             handled = self.frame.mouse_event(size, event, button, col, row, focus)
 
-        if handled:
+        if handled and not hover_event:
             self._invalidate()
         return handled
 

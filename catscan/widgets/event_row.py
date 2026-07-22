@@ -12,7 +12,7 @@ import urwid
 
 from catscan.data import NUM_EVENT_COLORS, Event, EventData, TransactionEventData
 from catscan.search import Searcher
-from catscan.state import CatscanState, HashableFrozenDict, Selection
+from catscan.state import CatscanState, HashableFrozenDict, HoverTarget, Selection
 from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents
 from catscan.util import even_odd_focused, str_fit_width
 
@@ -358,6 +358,7 @@ class EventRow(EventRowBase):
         row_index: int,
         on_make_selection: Callable,
         on_extend_selection: Callable,
+        on_hover: Callable | None = None,
         active_background: str | None = None,
         expanded_allowed: bool = True,
     ) -> None:
@@ -366,6 +367,7 @@ class EventRow(EventRowBase):
         self.row_index = row_index
         self.on_make_selection = on_make_selection
         self.on_extend_selection = on_extend_selection
+        self.on_hover = on_hover
         self.active_background = active_background
         self.expanded_allowed = expanded_allowed
         super().__init__()
@@ -748,6 +750,9 @@ class EventRow(EventRowBase):
     def _adjust_selection(self, event: Event, **kwargs: Any) -> Selection:
         return self.state.selection.adjust_within_row(event, duration=self.state.ps_per_cycle, **kwargs)
 
+    def _make_hover(self, **kwargs: Any) -> HoverTarget:
+        return HoverTarget(event_row=self.ed.key(), within_transaction=self._transaction_row, **kwargs)
+
     def keypress(
         self,
         size: tuple[()] | tuple[int] | tuple[int, int],
@@ -829,6 +834,56 @@ class EventRow(EventRowBase):
         event = self.data[data_idx][row]
         return self._make_selection(event=event, duration=self.state.ps_per_cycle)
 
+    def mouse_to_hover(self, col: int, row: int) -> HoverTarget:
+        """
+        Given a column and row within this widget, return a hover target for
+        the visible event content under the cursor.
+        """
+        if col < self.state.column_header_width:
+            return HoverTarget()
+
+        col_idx = col - self.state.column_header_width
+        if col_idx < 0 or col_idx >= len(self.data):
+            return HoverTarget()
+
+        difference_ps = self.state.start_ps % self.state.ps_per_cycle
+        difference_chars = math.floor(difference_ps / self.state.ps_per_char)
+
+        if not self.expanded:
+            if self.state.cycles_per_char >= 1:
+                start_ps, end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
+            else:
+                cycle_index = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
+                start_ps, end_ps = self.index_to_ps_range(cycle_index, 1)
+
+            if any(self.ed[start_ps:end_ps]):
+                return self._make_hover(time_range=(start_ps, end_ps))
+            return HoverTarget()
+
+        if self.state.cycles_per_char > 1:
+            assert self.state.cycles_per_char.denominator == 1
+            max_row = 1 if self.data[col_idx] < 0 else self.data[col_idx]
+            if row >= max_row:
+                return HoverTarget()
+
+            start_ps, end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
+            if any(self.ed[start_ps:end_ps]):
+                return self._make_hover(time_range=(start_ps, end_ps))
+            return HoverTarget()
+
+        data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
+        if data_idx < 0 or data_idx >= len(self.data):
+            return HoverTarget()
+        if row >= len(self.data[data_idx]):
+            return HoverTarget()
+
+        events = self.data[data_idx]
+        if len(events) == 1:
+            return self._make_hover(event=events[0])
+
+        start_ps, end_ps = self.index_to_ps_range(data_idx, 1)
+        return self._make_hover(time_range=(start_ps, end_ps))
+
     def mouse_to_next_selection(self, col: int, reverse: bool = False) -> Selection:
         if self.expanded:
             col_idx = col - self.state.column_header_width
@@ -848,6 +903,11 @@ class EventRow(EventRowBase):
         row: int,
         focus: bool,
     ) -> bool | None:
+        if button == 0 and event.endswith(("mouse drag", "mouse press")):
+            if self.on_hover:
+                self.on_hover(self.mouse_to_hover(col, row))
+            return True
+
         # Ignore clicks to the left of where we're displaying events
         if col < self.state.column_header_width:
             return False

@@ -11,7 +11,7 @@ from perf_streams.event_stream import Event
 
 from catscan.commit_sync import CommitSyncer
 from catscan.data import EventStreamData, EventStreamDataEventView, EventStreamDataView
-from catscan.state import CatscanState, Selection
+from catscan.state import CatscanState, HoverTarget, Selection
 from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents
 from catscan.widgets.event_row import EventRow, EventRowBase, RowType
 from catscan.widgets.scrollbar import FixedWidthScrollBar
@@ -404,6 +404,7 @@ class EventView(urwid.WidgetWrap, View):
         on_toggle_expanded: Callable,
         on_make_selection: Callable,
         on_extend_selection: Callable,
+        on_hover: Callable,
         on_translate_event: Callable,
         on_focus_row_change: Callable | None = None,
         length_hint: int = 1,
@@ -418,6 +419,7 @@ class EventView(urwid.WidgetWrap, View):
         self.on_toggle_expanded = on_toggle_expanded
         self._on_make_selection = on_make_selection
         self._on_extend_selection = on_extend_selection
+        self._on_hover = on_hover
         self.on_translate_event = on_translate_event
         self.on_focus_row_change = on_focus_row_change
 
@@ -477,6 +479,11 @@ class EventView(urwid.WidgetWrap, View):
         if isinstance(selection, Selection):
             selection.assign_view(self.name)
         return self._on_extend_selection(selection, *args, **kwargs)
+
+    def on_hover(self, hover: HoverTarget) -> bool:
+        if hover:
+            hover.assign_view(self.name)
+        return self._on_hover(hover)
 
     def _all_rows(self) -> tuple[bool, EventStreamDataEventView]:
         return self.state.expand_rows, self.iter_event_rows()
@@ -690,11 +697,17 @@ class EventView(urwid.WidgetWrap, View):
         focus: bool,
     ) -> bool | None:
         eb = (event, button)
+        is_hover_event = button == 0 and event.endswith(("mouse drag", "mouse press"))
         mouse_diff = (0, 0)
         if self._last_mouse_location is not None:
             mouse_diff = (col - self._last_mouse_location[0], row - self._last_mouse_location[1])
         self._last_mouse_location = (col, row)
 
+        if is_hover_event:
+            handled = self._w.mouse_event(size, event, button, col, row, focus)
+            if not handled:
+                self.on_hover(HoverTarget())
+            return True
         if eb in action_mouseevents[ACTIONS.ZOOM_IN]:
             if col > self.state.column_header_width:
                 self.on_zoom_in(col)

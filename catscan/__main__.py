@@ -9,6 +9,7 @@ import logging
 import os
 import runpy
 import warnings
+from typing import Any
 
 import urwid
 
@@ -38,6 +39,8 @@ INSTARGS_DEFAULT = [
     "instruction",
     "inst_bytes",
 ]
+XTERM_ENABLE_ALL_MOTION = "\033[?1003h"
+XTERM_DISABLE_ALL_MOTION = "\033[?1003l"
 
 
 def static_abbreviation_spec(arg: str) -> tuple[str, str]:
@@ -65,6 +68,27 @@ def load_mapping_file_abbreviations(mapping_files: list[str]) -> list[DynamicAbb
         runpy.run_path(mapping_file, init_globals={"add_abbreviation": add_abbreviation})
 
     return abbreviations
+
+
+def enable_mouse_hover_tracking(screen: urwid.BaseScreen) -> None:
+    screen.set_mouse_tracking(True)
+
+    if not hasattr(screen, "write"):
+        return
+
+    screen.write(XTERM_ENABLE_ALL_MOTION)
+
+    if getattr(screen, "_catscan_hover_tracking_wrapped", False):
+        return
+
+    original_stop = screen.stop
+
+    def stop_with_hover_restore(*args: Any, **kwargs: Any) -> None:
+        screen.write(XTERM_DISABLE_ALL_MOTION)
+        return original_stop(*args, **kwargs)
+
+    screen.stop = stop_with_hover_restore
+    screen._catscan_hover_tracking_wrapped = True
 
 
 def parse_args() -> argparse.Namespace:
@@ -276,6 +300,7 @@ def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> T
     loop.screen.set_terminal_properties(colors)
     loop.screen.reset_default_terminal_palette()
     loop.screen.focus_reporting = True
+    enable_mouse_hover_tracking(loop.screen)
 
     dynamic_abbreviations = (
         args.value_string_abbrev + args.value_map_abbrev + load_mapping_file_abbreviations(args.mapping_file)

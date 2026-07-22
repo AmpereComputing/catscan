@@ -63,6 +63,7 @@ class TransactionView(EventView):
             row_index,
             on_make_selection=self.on_make_selection,
             on_extend_selection=self.on_extend_selection,
+            on_hover=self.on_hover,
             active_background="_active",
             **kwargs,
         )

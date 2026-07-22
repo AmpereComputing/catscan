@@ -70,6 +70,7 @@ class ResourceView(EventView):
             row_index,
             on_make_selection=self.on_make_selection,
             on_extend_selection=self.on_extend_selection,
+            on_hover=self.on_hover,
             **kwargs,
         )
 
@@ -246,6 +247,7 @@ class SubsetResourceView(ResourceView):
             row_index,
             on_make_selection=self.on_make_selection,
             on_extend_selection=self.on_extend_selection,
+            on_hover=self.on_hover,
             expanded_allowed=self._allow_row_expansion,
             **kwargs,
         )

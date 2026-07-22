@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 from contextlib import suppress
+from collections.abc import Iterable
 from functools import partial
 from io import BufferedReader, StringIO, TextIOWrapper
 from pathlib import Path
@@ -18,6 +19,7 @@ from test_data import CatscanDataTest
 from catscan.__main__ import load_mapping_file_abbreviations, setup
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
+from catscan.state import HoverTarget
 
 TOTAL_EVENTS = 20
 PS_PER_CYCLE = 100
@@ -147,12 +149,13 @@ class TestMain(CatscanDataTest):
     def event_stream_setup(cls):
         writer = EventStreamWriter(cls.test_filename)
         events = [writer.define_event(f"event_{number}", "some event") for number in range(TOTAL_EVENTS)]
+        event_value = writer.define_data("event.value", "Value associated with the event")
         writer.start_simulation()
         for cycle in range(1000):
             time = cycle * PS_PER_CYCLE
             for index, event in enumerate(events):
                 if cycle % (index + 1) == 0:
-                    writer.post_event(event, time=time)
+                    writer.post_event(event, time=time, values={event_value: cycle + index})
 
         writer.close()
 
@@ -170,6 +173,19 @@ class TestMain(CatscanDataTest):
     def press_key(self, top, key):
         return top.keypress(self.screen.get_cols_rows(), key)
 
+    def first_event(self, row: str):
+        return next(self.esd.event_rows[row][0:PS_PER_CYCLE])
+
+    def canvas_text(self, lines: Iterable[bytes]) -> str:
+        return "\n".join(line.decode() for line in lines)
+
+    def loaded_top(self):
+        top = setup(self.args(), screen=self.screen)
+        top.cached_maxcol = 120
+        top.update_state(top.state.copy_with(loading=False))
+        top.update_stream_data(self.esd)
+        return top
+
     def run_catscan(self, args, *steps: tuple[int, str]):
         top = setup(args, screen=self.screen)
 
@@ -183,6 +199,7 @@ class TestMain(CatscanDataTest):
         return self.screen.read_all()
 
     def setUp(self):
+        self.esd = self.load_event_data()
         self.logging = NamedTemporaryFile()
         self.output = TemporaryFile("w+")
         self.screen = TestingScreen(self.output)
@@ -238,3 +255,66 @@ class TestMain(CatscanDataTest):
         self.assertEqual(self.press_key(top, "Z"), "Z")
         with self.assertRaises(urwid.ExitMainLoop):
             self.press_key(top, "Z")
+
+    def test_hover_coalescing(self):
+        top = self.loaded_top()
+        invalidations = []
+        top._invalidate = lambda: invalidations.append(True)
+
+        hover = HoverTarget("event_0", event=self.first_event("event_0"), view="main.resource")
+        top._current_mouse_cell = (20, 4)
+
+        self.assertTrue(top.on_hover(hover))
+        self.assertFalse(top.on_hover(hover))
+        self.assertEqual(1, len(invalidations))
+
+        top._current_mouse_cell = (21, 4)
+        self.assertTrue(top.on_hover(hover))
+        self.assertEqual(2, len(invalidations))
+
+        range_hover = HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource")
+        self.assertTrue(top.on_hover(range_hover))
+        self.assertEqual(3, len(invalidations))
+
+        self.assertTrue(top.clear_hover())
+        self.assertFalse(top.clear_hover())
+        self.assertEqual(4, len(invalidations))
+
+    def test_hover_popup_single_event_contains_data(self):
+        top = self.loaded_top()
+        top._current_mouse_cell = (20, 4)
+        event = self.first_event("event_0")
+
+        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        canvas = top.render((120, 40), True)
+        text = self.canvas_text(canvas.text)
+
+        self.assertIn(event.abbrev, text)
+        self.assertIn("event.value: 0", text)
+
+    def test_hover_popup_range_contains_histogram(self):
+        top = self.loaded_top()
+        top._current_mouse_cell = (20, 4)
+
+        top.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
+        canvas = top.render((120, 40), True)
+        text = self.canvas_text(canvas.text)
+
+        self.assertIn("abbreviation", text)
+        self.assertIn(f"1.  {self.first_event('event_0').abbrev}", text)
+        self.assertIn("2 (100.00%)", text)
+
+    def test_hover_with_selection_uses_status_bar(self):
+        top = self.loaded_top()
+        selected_event = self.first_event("event_0")
+        hover_event = self.first_event("event_1")
+
+        top.make_selection(selected_event)
+        top._current_mouse_cell = (20, 4)
+        top.on_hover(HoverTarget("event_1", event=hover_event, view="main.resource"))
+        canvas = top.render((120, 40), True)
+        text = self.canvas_text(canvas.text)
+
+        self.assertIs(top.event_details, top.columns.contents[1][0])
+        self.assertIn("hover event_1", text)
+        self.assertIn(hover_event.abbrev, text)
