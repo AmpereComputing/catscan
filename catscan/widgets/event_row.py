@@ -751,7 +751,12 @@ class EventRow(EventRowBase):
         return self.state.selection.adjust_within_row(event, duration=self.state.ps_per_cycle, **kwargs)
 
     def _make_hover(self, **kwargs: Any) -> HoverTarget:
-        return HoverTarget(event_row=self.ed.key(), within_transaction=self._transaction_row, **kwargs)
+        return HoverTarget(
+            event_row=self.ed.key(),
+            within_transaction=self._transaction_row,
+            abbrev_visible=self.expanded and self.state.cycles_per_char.numerator == 1,
+            **kwargs,
+        )
 
     def _ps_range_to_hover(self, start_ps: int, end_ps: int) -> HoverTarget:
         events = list(self.ed[start_ps:end_ps])

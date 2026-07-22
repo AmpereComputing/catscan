@@ -114,6 +114,7 @@ class TestEventRow(CatscanDataTest):
 
         self.assertTrue(hover.is_event())
         self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
+        self.assertTrue(hover.abbrev_visible)
 
     def test_hover_collapsed_single_event_cell_returns_event(self):
         state = self._state(expand_rows=False)
@@ -123,6 +124,7 @@ class TestEventRow(CatscanDataTest):
 
         self.assertTrue(hover.is_event())
         self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
+        self.assertFalse(hover.abbrev_visible)
 
     def test_hover_expanded_aggregate_cell_returns_time_range(self):
         state = self._state(expand_rows=True, cycles_per_char=Fraction(2048, 1), start_ps=0)
@@ -143,6 +145,7 @@ class TestEventRow(CatscanDataTest):
             hover = row.mouse_to_hover(state.column_header_width + offset, 0)
             self.assertTrue(hover.is_event())
             self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
+            self.assertFalse(hover.abbrev_visible)
 
         self.assertFalse(row.mouse_to_hover(state.column_header_width + 8, 0))
 

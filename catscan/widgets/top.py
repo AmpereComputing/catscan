@@ -420,29 +420,6 @@ class Top(urwid.widget.Widget):
             return event
         return None
 
-    def _hover_status_text(self) -> str:
-        hover = self._hover_target
-        if not hover:
-            return ""
-
-        row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
-        if event := self._single_event_for_hover(hover):
-            cycles = round(event.time // self.state.ps_per_cycle)
-            data = " ".join(f"{name}={value}" for name, value in self._format_hover_data(event).items())
-            data = f" | {data}" if data else ""
-            return f"hover {row_name}: {event.abbrev} @ {cycles:,} cyc ({event.name}){data}"
-
-        cycle_span = (hover.end_ps - hover.start_ps) // self.state.ps_per_cycle
-        header, contents, _footer = generate_summary_table(
-            self._data_view_for_hover(hover),
-            hover.start_ps,
-            hover.end_ps,
-            [hover.event_row],
-            None,
-        )
-        summary = ", ".join(f"{row[0].strip()} {row[1]}" for row in contents[:3])
-        return f"hover {row_name}: {cycle_span:,} cycles | {header[0]}: {summary}"
-
     def _hover_popup_lines(self) -> list[str]:
         hover = self._hover_target
         if not hover:
@@ -453,9 +430,10 @@ class Top(urwid.widget.Widget):
             cycles = round(event.time // self.state.ps_per_cycle)
             lines = [
                 f"row: {row_name}",
-                f"abbrev: {event.abbrev}",
                 f"time: {event.time:,} ps / {cycles:,} cyc",
             ]
+            if not hover.abbrev_visible:
+                lines.insert(1, f"abbrev: {event.abbrev}")
             lines.extend(f"{name}: {value}" for name, value in self._format_hover_data(event).items())
             return lines
 
@@ -618,10 +596,7 @@ class Top(urwid.widget.Widget):
             self.status_bar.set_text(f"Loading ({self.loading_pct}%)...", None)
             canvas = self.frame.render(size, focus and not showing_popup)
         else:
-            status_text, source_text = self.get_status()
-            if self.state.selection and self._hover_target:
-                status_text = self._hover_status_text()
-            self.status_bar.set_text(status_text, source_text)
+            self.status_bar.set_text(*self.get_status())
             if self.state.selection:
                 sidebar = self.event_details if self.state.selection.is_event() else self.summary_sidebar
                 self.columns.contents = [
@@ -642,7 +617,7 @@ class Top(urwid.widget.Widget):
             canvas = self.help.overlay(canvas, size, focus)
         elif showing_messages:
             canvas = self.messages.overlay(canvas, size, focus)
-        elif not self.state.selection:
+        else:
             canvas = self._overlay_hover_popup(canvas, size, focus)
         return canvas
 

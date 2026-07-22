@@ -325,6 +325,16 @@ class TestMain(CatscanDataTest):
         self.assertIn("hover:on", text)
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
 
+    def test_hover_popup_omits_visible_abbrev(self):
+        top = self.loaded_top()
+        event = self.first_event("event_0")
+
+        top.on_hover(HoverTarget("event_0", event=event, view="main.resource", abbrev_visible=True))
+        lines = top._hover_popup_lines()
+
+        self.assertNotIn(f"abbrev: {event.abbrev}", lines)
+        self.assertIn("row: event_0", lines)
+
     def test_hover_popup_range_contains_histogram(self):
         top = self.loaded_top()
         top._current_mouse_cell = (20, 4)
@@ -337,7 +347,7 @@ class TestMain(CatscanDataTest):
         self.assertNotIn("abbreviation", text)
         self.assertIn(f"{self.first_event('event_0').abbrev}: 2 (100.00%)", text)
 
-    def test_hover_with_selection_uses_status_bar(self):
+    def test_hover_with_selection_uses_popup(self):
         top = self.loaded_top()
         selected_event = self.first_event("event_0")
         hover_event = self.first_event("event_1")
@@ -349,5 +359,6 @@ class TestMain(CatscanDataTest):
         text = self.canvas_text(canvas.text)
 
         self.assertIs(top.event_details, top.columns.contents[1][0])
-        self.assertIn("hover event_1", text)
-        self.assertIn(hover_event.abbrev, text)
+        self.assertIn("row: event_1", text)
+        self.assertIn(f"abbrev: {hover_event.abbrev}", text)
+        self.assertNotIn("hover event_1", text)

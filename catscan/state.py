@@ -202,6 +202,7 @@ class HoverTarget:
         time_range: tuple[int, int] | None = None,
         within_transaction: bool = False,
         view: str | None = None,
+        abbrev_visible: bool = False,
     ):
         assert not (event and time_range)
         assert event_row or not (event or time_range)
@@ -211,6 +212,7 @@ class HoverTarget:
         self._time_range = time_range
         self._within_transaction = within_transaction
         self._view = view
+        self._abbrev_visible = abbrev_visible
 
     @property
     def event_row(self) -> str | int:
@@ -233,6 +235,10 @@ class HoverTarget:
 
     def within_transaction(self) -> bool:
         return self._within_transaction
+
+    @property
+    def abbrev_visible(self) -> bool:
+        return self._abbrev_visible
 
     @property
     def start_ps(self) -> int:
