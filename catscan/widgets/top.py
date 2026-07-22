@@ -452,7 +452,6 @@ class Top(urwid.widget.Widget):
             row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
             cycles = round(event.time // self.state.ps_per_cycle)
             lines = [
-                event.name,
                 f"row: {row_name}",
                 f"abbrev: {event.abbrev}",
                 f"time: {event.time:,} ps / {cycles:,} cyc",
@@ -463,7 +462,8 @@ class Top(urwid.widget.Widget):
         histogram = summary_histogram(
             self._data_view_for_hover(hover).get(hover.event_row)[hover.start_ps : hover.end_ps]
         )
-        return [f"{abbrev}: {count}" for abbrev, count in histogram.most_common(99)]
+        total = histogram.total()
+        return [f"{abbrev}: {count} ({count / total:.2%})" for abbrev, count in histogram.most_common(99)]
 
     def _overlay_hover_popup(
         self, canvas: urwid.Canvas, size: tuple[int, int], focus: bool = False

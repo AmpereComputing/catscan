@@ -320,6 +320,8 @@ class TestMain(CatscanDataTest):
 
         self.assertIn(event.abbrev, text)
         self.assertIn("event.value: 0", text)
+        self.assertIn("row: event_0", text)
+        self.assertNotIn(event.name, top._hover_popup_lines())
         self.assertIn("hover:on", text)
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
 
@@ -333,7 +335,7 @@ class TestMain(CatscanDataTest):
 
         self.assertNotIn("Summary of", text)
         self.assertNotIn("abbreviation", text)
-        self.assertIn(f"{self.first_event('event_0').abbrev}: 2", text)
+        self.assertIn(f"{self.first_event('event_0').abbrev}: 2 (100.00%)", text)
 
     def test_hover_with_selection_uses_status_bar(self):
         top = self.loaded_top()
