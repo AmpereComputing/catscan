@@ -351,7 +351,8 @@ class TestMain(CatscanDataTest):
 
         self.assertNotIn(f"abbrev: {event.abbrev}", lines)
         self.assertNotIn("row: event_0", lines)
-        self.assertTrue(lines[0].startswith("time:"))
+        self.assertEqual(f"time: {event.time // PS_PER_CYCLE:,} cyc", lines[0])
+        self.assertNotIn("ps", lines[0])
 
     def test_hover_popup_range_contains_histogram(self):
         top = self.loaded_top()

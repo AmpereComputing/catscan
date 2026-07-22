@@ -449,7 +449,7 @@ class Top(urwid.widget.Widget):
         if event := self._single_event_for_hover(hover):
             cycles = round(event.time // self.state.ps_per_cycle)
             lines = [
-                f"time: {event.time:,} ps / {cycles:,} cyc",
+                f"time: {cycles:,} cyc",
             ]
             if not hover.abbrev_visible:
                 lines.insert(0, f"abbrev: {event.abbrev}")
