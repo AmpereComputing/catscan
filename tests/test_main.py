@@ -331,9 +331,9 @@ class TestMain(CatscanDataTest):
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)
 
-        self.assertIn("abbreviation", text)
-        self.assertIn(f"1.  {self.first_event('event_0').abbrev}", text)
-        self.assertIn("2 (100.00%)", text)
+        self.assertNotIn("Summary of", text)
+        self.assertNotIn("abbreviation", text)
+        self.assertIn(f"{self.first_event('event_0').abbrev}: 2", text)
 
     def test_hover_with_selection_uses_status_bar(self):
         top = self.loaded_top()

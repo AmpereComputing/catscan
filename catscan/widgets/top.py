@@ -27,6 +27,7 @@ from catscan.data import (
     Transaction,
     get_event_data,
     save_event_data,
+    summary_histogram,
 )
 from catscan.events import EventSpecification, trace_events
 from catscan.events.mapping import Mapper
@@ -409,14 +410,23 @@ class Top(urwid.widget.Widget):
             display_data = dict(sorted(display_data.items()))
         return {strip_prefix(name, event.name): value for name, value in display_data.items()}
 
+    def _single_event_for_hover(self, hover: HoverTarget) -> Event | None:
+        if hover.is_event():
+            return hover.event
+
+        it = self._data_view_for_hover(hover).get(hover.event_row)[hover.start_ps : hover.end_ps]
+        event = next(it, None)
+        if event is not None and next(it, None) is None:
+            return event
+        return None
+
     def _hover_status_text(self) -> str:
         hover = self._hover_target
         if not hover:
             return ""
 
         row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
-        if hover.is_event():
-            event = hover.event
+        if event := self._single_event_for_hover(hover):
             cycles = round(event.time // self.state.ps_per_cycle)
             data = " ".join(f"{name}={value}" for name, value in self._format_hover_data(event).items())
             data = f" | {data}" if data else ""
@@ -438,9 +448,8 @@ class Top(urwid.widget.Widget):
         if not hover:
             return []
 
-        row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
-        if hover.is_event():
-            event = hover.event
+        if event := self._single_event_for_hover(hover):
+            row_name = self._data_view_for_hover(hover).name_of(hover.event_row)
             cycles = round(event.time // self.state.ps_per_cycle)
             lines = [
                 event.name,
@@ -451,21 +460,10 @@ class Top(urwid.widget.Widget):
             lines.extend(f"{name}: {value}" for name, value in self._format_hover_data(event).items())
             return lines
 
-        picosecond_span = hover.end_ps - hover.start_ps
-        cycle_span = picosecond_span // self.state.ps_per_cycle
-        header, contents, footer = generate_summary_table(
-            self._data_view_for_hover(hover),
-            hover.start_ps,
-            hover.end_ps,
-            [hover.event_row],
-            None,
+        histogram = summary_histogram(
+            self._data_view_for_hover(hover).get(hover.event_row)[hover.start_ps : hover.end_ps]
         )
-        lines = [f"Summary of {row_name}", f"{cycle_span:,} cycles ({picosecond_span:,} ps)"]
-        lines.append(" | ".join(header))
-        lines.extend(" | ".join(row) for row in contents)
-        if footer:
-            lines.append(" | ".join(footer))
-        return lines
+        return [f"{abbrev}: {count}" for abbrev, count in histogram.most_common(99)]
 
     def _overlay_hover_popup(
         self, canvas: urwid.Canvas, size: tuple[int, int], focus: bool = False

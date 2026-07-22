@@ -753,6 +753,14 @@ class EventRow(EventRowBase):
     def _make_hover(self, **kwargs: Any) -> HoverTarget:
         return HoverTarget(event_row=self.ed.key(), within_transaction=self._transaction_row, **kwargs)
 
+    def _ps_range_to_hover(self, start_ps: int, end_ps: int) -> HoverTarget:
+        events = list(self.ed[start_ps:end_ps])
+        if len(events) == 1:
+            return self._make_hover(event=events[0])
+        if events:
+            return self._make_hover(time_range=(start_ps, end_ps))
+        return HoverTarget()
+
     def keypress(
         self,
         size: tuple[()] | tuple[int] | tuple[int, int],
@@ -843,7 +851,7 @@ class EventRow(EventRowBase):
             return HoverTarget()
 
         col_idx = col - self.state.column_header_width
-        if col_idx < 0 or col_idx >= len(self.data):
+        if col_idx < 0:
             return HoverTarget()
 
         difference_ps = self.state.start_ps % self.state.ps_per_cycle
@@ -851,25 +859,27 @@ class EventRow(EventRowBase):
 
         if not self.expanded:
             if self.state.cycles_per_char >= 1:
+                if col_idx >= len(self.data):
+                    return HoverTarget()
                 start_ps, end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
             else:
                 cycle_index = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
+                if cycle_index < 0 or cycle_index >= len(self.data):
+                    return HoverTarget()
                 start_ps, end_ps = self.index_to_ps_range(cycle_index, 1)
 
-            if any(self.ed[start_ps:end_ps]):
-                return self._make_hover(time_range=(start_ps, end_ps))
-            return HoverTarget()
+            return self._ps_range_to_hover(start_ps, end_ps)
 
         if self.state.cycles_per_char > 1:
             assert self.state.cycles_per_char.denominator == 1
+            if col_idx >= len(self.data):
+                return HoverTarget()
             max_row = 1 if self.data[col_idx] < 0 else self.data[col_idx]
             if row >= max_row:
                 return HoverTarget()
 
             start_ps, end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
-            if any(self.ed[start_ps:end_ps]):
-                return self._make_hover(time_range=(start_ps, end_ps))
-            return HoverTarget()
+            return self._ps_range_to_hover(start_ps, end_ps)
 
         data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
         if data_idx < 0 or data_idx >= len(self.data):
@@ -877,12 +887,7 @@ class EventRow(EventRowBase):
         if row >= len(self.data[data_idx]):
             return HoverTarget()
 
-        events = self.data[data_idx]
-        if len(events) == 1:
-            return self._make_hover(event=events[0])
-
-        start_ps, end_ps = self.index_to_ps_range(data_idx, 1)
-        return self._make_hover(time_range=(start_ps, end_ps))
+        return self._make_hover(event=self.data[data_idx][row])
 
     def mouse_to_next_selection(self, col: int, reverse: bool = False) -> Selection:
         if self.expanded:

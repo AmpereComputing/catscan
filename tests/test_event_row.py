@@ -115,28 +115,36 @@ class TestEventRow(CatscanDataTest):
         self.assertTrue(hover.is_event())
         self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
 
-    def test_hover_collapsed_cell_returns_time_range(self):
+    def test_hover_collapsed_single_event_cell_returns_event(self):
         state = self._state(expand_rows=False)
         row = self._event_row(state)
 
         hover = row.mouse_to_hover(state.column_header_width, 0)
 
-        self.assertTrue(hover.is_time_range())
-        self.assertFalse(hover.is_event())
-        self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.start_ps)
-        self.assertEqual(self.__class__.FLUSH_TIMES_PS[0] + self.__class__.PS_PER_CYCLE, hover.end_ps)
+        self.assertTrue(hover.is_event())
+        self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
 
     def test_hover_expanded_aggregate_cell_returns_time_range(self):
-        start_ps = self.__class__.FLUSH_TIMES_PS[0] - self.__class__.PS_PER_CYCLE
-        state = self._state(expand_rows=True, cycles_per_char=Fraction(2, 1), start_ps=start_ps)
+        state = self._state(expand_rows=True, cycles_per_char=Fraction(2048, 1), start_ps=0)
         row = self._event_row(state)
 
         hover = row.mouse_to_hover(state.column_header_width, 0)
 
         self.assertTrue(hover.is_time_range())
         self.assertFalse(hover.is_event())
-        self.assertEqual(start_ps, hover.start_ps)
-        self.assertEqual(start_ps + 2 * self.__class__.PS_PER_CYCLE, hover.end_ps)
+        self.assertEqual(0, hover.start_ps)
+        self.assertEqual(2048 * self.__class__.PS_PER_CYCLE, hover.end_ps)
+
+    def test_hover_zoomed_in_single_event_spans_multiple_columns(self):
+        state = self._state(expand_rows=False, cycles_per_char=Fraction(1, 8))
+        row = self._event_row(state)
+
+        for offset in range(8):
+            hover = row.mouse_to_hover(state.column_header_width + offset, 0)
+            self.assertTrue(hover.is_event())
+            self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
+
+        self.assertFalse(row.mouse_to_hover(state.column_header_width + 8, 0))
 
     def test_hover_empty_and_header_positions(self):
         state = self._state(expand_rows=True)
