@@ -294,7 +294,7 @@ class TestMain(CatscanDataTest):
         self.assertFalse(top.clear_hover())
         self.assertEqual(4, len(invalidations))
 
-    def test_status_bar_shows_hover_armed_until_motion_seen(self):
+    def test_status_bar_omits_hover_tracking_state(self):
         top = self.loaded_top()
 
         canvas = top.render((120, 40), True)
@@ -302,14 +302,16 @@ class TestMain(CatscanDataTest):
 
         self.assertTrue(top.hover_tracking_enabled)
         self.assertFalse(top.hover_tracking_supported)
-        self.assertIn("hover:armed", text)
+        self.assertNotIn("hover:armed", text)
+        self.assertNotIn("hover:on", text)
 
         top.mouse_event((120, 40), "mouse drag", 4, 0, 0, True)
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)
 
         self.assertTrue(top.hover_tracking_supported)
-        self.assertIn("hover:on", text)
+        self.assertNotIn("hover:armed", text)
+        self.assertNotIn("hover:on", text)
 
     def test_hover_popup_single_event_contains_data(self):
         top = self.loaded_top()
@@ -324,7 +326,6 @@ class TestMain(CatscanDataTest):
         self.assertIn("event.value: 0", text)
         self.assertNotIn("row: event_0", text)
         self.assertNotIn(event.name, top._hover_popup_lines())
-        self.assertIn("hover:on", text)
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
 
     def test_hover_popup_single_event_bolds_data_names(self):

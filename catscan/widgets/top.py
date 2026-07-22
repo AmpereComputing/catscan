@@ -395,14 +395,9 @@ class Top(urwid.widget.Widget):
         if self.commit_syncer and not self.commit_syncer.stopped:
             symbol = "⇄" if self.commit_syncer.syncing else "⏸"
             sync_status = f" | {symbol} {self.commit_syncer.fifo_basename}"
-        hover_status = ""
-        if self.hover_tracking_supported:
-            hover_status = " | hover:on"
-        elif self.hover_tracking_enabled:
-            hover_status = " | hover:armed"
         icon = "🐈" if self.state.has_focus else "⏾ "
         return (
-            f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}{hover_status}",
+            f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
             self.stream_data.source,
         )
 
