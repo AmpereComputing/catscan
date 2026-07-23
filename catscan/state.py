@@ -250,4 +250,5 @@ class CatscanState(NamedTuple):
         return self._replace(**kwargs)
 
     def compare(self, other: "CatscanState", *attributes: str) -> bool:
+        """Return whether selected attributes match between two states."""
         return all(getattr(self, attr) == getattr(other, attr) for attr in attributes)

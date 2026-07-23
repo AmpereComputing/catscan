@@ -1065,6 +1065,7 @@ class Top(urwid.widget.Widget):
         )
 
     def send_commit_sync(self, movement_alignment: Literal["before", "after"] | None = None) -> None:
+        """Send the current primary-view commit sync position to the peer."""
         if not self.commit_syncer or not self.commit_syncer.syncing:
             return
 
@@ -1250,6 +1251,7 @@ class Top(urwid.widget.Widget):
         return not self._transaction_view.suppressing_commit_sync
 
     def on_viewport_change(self, view: EventView, movement_alignment: Literal["before", "after"] | None) -> None:
+        """Send commit sync when the transaction viewport anchor changes."""
         if not self._should_send_transaction_commit_sync(view):
             return
 
@@ -1261,6 +1263,7 @@ class Top(urwid.widget.Widget):
         _focused_row_key: str | int | None,
         movement_alignment: Literal["before", "after"] | None,
     ) -> None:
+        """Send commit sync when the focused transaction row changes."""
         if not self._should_send_transaction_commit_sync(view):
             return
 

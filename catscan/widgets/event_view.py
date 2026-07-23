@@ -535,15 +535,18 @@ class EventView(urwid.WidgetWrap, View):
         self.update_rows()
 
     def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        """Prepare this view for commit sync and return synthetic events to add."""
         self._commit_sync_event = commit_event
         self._commit_sync_data_name = commit_data_name
         return []
 
     def stop_commit_sync(self) -> None:
+        """Clear commit sync state for this view."""
         self._commit_sync_event = None
         self._commit_sync_data_name = None
 
     def commit_sync_index_candidates(self) -> list[int]:
+        """Return candidate commit indexes near this view's current position."""
         return []
 
     def update_state(self, new_state: CatscanState) -> bool:
@@ -575,6 +578,7 @@ class EventView(urwid.WidgetWrap, View):
         return rowwidget.row_id()
 
     def focused_row_key(self) -> str | int | None:
+        """Return the key for the focused event row, if any."""
         row_type, row_key = self.focused_row()
         return None if row_type is RowType.RESOURCE_BASE else row_key
 
@@ -592,6 +596,7 @@ class EventView(urwid.WidgetWrap, View):
         return self.state.column_header_width + round((maxcol - self.state.column_header_width) / 2)
 
     def row_position(self, row_key: str | int) -> int | None:
+        """Return the current list position for a row key."""
         return self._row_positions.get(row_key)
 
     def _row_key_at_position(self, position: int | None) -> str | int | None:
@@ -602,6 +607,7 @@ class EventView(urwid.WidgetWrap, View):
         return None if row_type is RowType.RESOURCE_BASE else row_key
 
     def visible_row_keys(self) -> list[str | int]:
+        """Return row keys currently visible in top-to-bottom order."""
         if self._last_rendered_size is None or len(self.list_box.body) == 0:
             return []
 
@@ -622,9 +628,11 @@ class EventView(urwid.WidgetWrap, View):
         return visible_keys
 
     def is_row_visible(self, row_key: str | int) -> bool:
+        """Return whether the row key is currently visible."""
         return row_key in self.visible_row_keys()
 
     def scroll_row_to_edge(self, row_key: str | int, align: Literal["top", "bottom"] = "top") -> bool:
+        """Scroll a row to the requested viewport edge if it exists."""
         position = self.row_position(row_key)
         if position is None:
             return False

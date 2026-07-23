@@ -110,6 +110,7 @@ class ResourceView(EventView):
         return 1
 
     def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        """Prepare resource commit sync and return generated pushout rows."""
         super().start_commit_sync(commit_syncer, commit_event, commit_data_name)
         if commit_event not in self.stream_data.event_rows:
             return []
@@ -155,6 +156,7 @@ class ResourceView(EventView):
         return pushout_events
 
     def commit_sync_index_candidates(self) -> list[int]:
+        """Return commit indexes near the resource view's visible start time."""
         if self._commit_sync_event is None or self._commit_sync_data_name is None:
             return []
         if self._commit_sync_event not in self.stream_data.event_rows:
@@ -165,6 +167,8 @@ class ResourceView(EventView):
             return []
 
         candidates = []
+        # Offer the closest commit and a short lookahead so the peer can choose
+        # the first candidate that also exists in its commit/pushout indexes.
         for _ in range(21):
             if self._commit_sync_data_name in closest_commit.data:
                 candidates.append(closest_commit.data[self._commit_sync_data_name])
@@ -200,9 +204,11 @@ class SubsetResourceView(ResourceView):
         return not self.events
 
     def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        """Prepare subset resource sync without adding resource pushout rows."""
         return EventView.start_commit_sync(self, commit_syncer, commit_event, commit_data_name)
 
     def commit_sync_index_candidates(self) -> list[int]:
+        """Return no commit candidates for subset resource views."""
         return EventView.commit_sync_index_candidates(self)
 
     def add_event(self, event: str):

@@ -68,6 +68,7 @@ class TransactionView(EventView):
         )
 
     def update_rows(self) -> None:
+        """Rebuild transaction rows and reset tracked viewport position."""
         super().update_rows()
         self._last_top_visible_row_key = None
         self._last_top_visible_position = None
@@ -91,6 +92,7 @@ class TransactionView(EventView):
         return middle.focus_pos
 
     def top_visible_row_key(self) -> str | int | None:
+        """Return the row key at the top of the visible transaction viewport."""
         return self._row_key_at_position(self._visible_top_position())
 
     def _movement_alignment(self, top_position: int | None) -> Literal["before", "after"] | None:
@@ -128,6 +130,7 @@ class TransactionView(EventView):
         return 3
 
     def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        """Prepare transaction commit sync indexes for row-based anchoring."""
         super().start_commit_sync(commit_syncer, commit_event, commit_data_name)
         self._commit_sync_candidates_by_row = {}
         self._commit_sync_row_by_index = {}
@@ -143,21 +146,26 @@ class TransactionView(EventView):
         return []
 
     def stop_commit_sync(self) -> None:
+        """Clear transaction commit sync indexes and notification suppression."""
         super().stop_commit_sync()
         self._commit_sync_candidates_by_row = {}
         self._commit_sync_row_by_index = {}
         self._suppress_commit_sync = False
 
     def commit_sync_index_candidates(self) -> list[int]:
+        """Return sync indexes found in the focused transaction row."""
         return self._commit_sync_candidates_by_row.get(self.focused_row_key(), [])
 
     def commit_sync_row(self, sync_index: int) -> str | int | None:
+        """Return the transaction row containing a sync index, if known."""
         return self._commit_sync_row_by_index.get(sync_index)
 
     def commit_sync_position(self) -> tuple[str | int | None, str | int | None]:
+        """Return the current top and focused row keys for restoration."""
         return self.top_visible_row_key(), self.focused_row_key()
 
     def restore_commit_sync_position(self, position: tuple[str | int | None, str | int | None]) -> None:
+        """Restore the visible transaction rows captured for commit sync."""
         top_row_key, focused_row_key = position
         if top_row_key is None and focused_row_key is None:
             return
@@ -182,6 +190,7 @@ class TransactionView(EventView):
         self._with_commit_sync_suppressed(restore_position)
 
     def scroll_row_to_edge_for_commit_sync(self, row_key: str | int, align: Literal["top", "bottom"] = "top") -> bool:
+        """Scroll during inbound commit sync without echoing another update."""
         scrolled = False
 
         def scroll() -> None:
@@ -192,10 +201,12 @@ class TransactionView(EventView):
         return scrolled
 
     def scroll_row_to_top_for_commit_sync(self, row_key: str | int) -> bool:
+        """Scroll a commit sync row to the top of the viewport."""
         return self.scroll_row_to_edge_for_commit_sync(row_key, "top")
 
     @property
     def suppressing_commit_sync(self) -> bool:
+        """Return whether transaction sync notifications are suppressed."""
         return self._suppress_commit_sync
 
     def _with_commit_sync_suppressed(self, operation: Callable[[], None]) -> None:

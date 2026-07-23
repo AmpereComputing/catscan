@@ -96,9 +96,11 @@ class CommitSyncState(NamedTuple):
     movement_alignment: Literal["before", "after"] | None = None
 
     def merge(self, delta: "CommitSyncState") -> "CommitSyncState":
+        """Return this state overlaid with the non-empty fields from delta."""
         return self._replace(**{name: value for name, value in delta._asdict().items() if value is not None})
 
     def has_fields(self) -> bool:
+        """Return whether this state carries any explicit sync fields."""
         return any(value is not None for value in self)
 
 
@@ -320,6 +322,7 @@ class CommitSyncer:
                 self.stop()
 
     def compute_commit_pushout_movements(self) -> CommitPushoutMovements:
+        """Return local pushout movement differences relative to the sync peer."""
         # Generate a dictionary keyed by sync_index for each commit which shows
         # "real" excess commit pushout. We don't count commit pushout as "real"
         # if it is a single cycle and the previous nonzero pushout was -1
@@ -368,6 +371,7 @@ class CommitSyncer:
         commit_data_name: str,
         sync_index: int,
     ) -> PushoutEvent:
+        """Return a synthetic pushout event for the given shared sync index."""
         return PushoutEvent(
             name,
             _id,
@@ -415,16 +419,20 @@ class CommitSyncer:
 
     @property
     def other_view_mode(self) -> DataView:
+        """Return the peer's primary view mode."""
         return self.other.view_mode
 
     @property
     def other_column_header_width(self) -> int:
+        """Return the peer's configured event-name column width."""
         return self.other.column_header_width
 
     def other_has_sync_index(self, sync_index: int) -> bool:
+        """Return whether the peer can synchronize against the given index."""
         return sync_index in self.other.commit_index or sync_index in self.other.pushout_index
 
     def first_other_sync_index(self, candidates: list[int]) -> int | None:
+        """Return the first candidate sync index also known by the peer."""
         for sync_index in candidates:
             if self.other_has_sync_index(sync_index):
                 return sync_index
@@ -487,6 +495,7 @@ class CommitSyncer:
         return self._write_sync_state(sync_state)
 
     def send_if_changed(self, sync_state: CommitSyncState) -> bool:
+        """Send only the changed fields from the requested sync state."""
         if not self.syncing:
             return self.send(sync_state)
 
