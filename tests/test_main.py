@@ -337,6 +337,15 @@ class TestMain(CatscanDataTest):
         self.assertEqual("data_name", rows[2][1][0])
         self.assertEqual(b"event.value:", rows[2][1][2])
 
+    def test_hover_popup_uses_rounded_line_box(self):
+        canvas = HoverPopup(["time: 100 ps"]).render((16, 3), True)
+        lines = [line.decode() for line in canvas.text]
+
+        self.assertEqual("╭", lines[0][0])
+        self.assertEqual("╮", lines[0][-1])
+        self.assertEqual("╰", lines[-1][0])
+        self.assertEqual("╯", lines[-1][-1])
+
     def test_hover_popup_range_does_not_bold_abbreviations(self):
         canvas = HoverPopup(["e0: 2 (100.00%)"], bold_labels=False).render((24, 3), True)
         row = list(canvas.content())[1]

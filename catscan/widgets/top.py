@@ -76,10 +76,58 @@ class DefaultViews(StrEnum):
 COMMIT_SYNC_DISPLAY_STATE_FIELDS = ("cycles_per_char", "expand_rows")
 
 
-class HoverPopup(urwid.widget.Widget):
-    """Small hover popup rendered as a boxed text canvas."""
+class _HoverPopupBody(urwid.widget.Widget):
+    """Text body for a hover popup."""
 
     _sizing = frozenset(["box"])
+    _selectable = False
+
+    def __init__(self, lines: Sequence[str], bold_labels: bool = False) -> None:
+        self.lines = list(lines)
+        self.bold_labels = bold_labels
+        super().__init__()
+
+    def _row_attrs(self, line: str, inner_width: int) -> tuple[bytes, list[tuple[str | None, int]]]:
+        fitted = str_fit_width(line, inner_width)
+        padding = " " * (inner_width - str_width(fitted))
+        row = fitted + padding
+
+        if not self.bold_labels or ":" not in fitted:
+            return row.encode(), [(None, len(row.encode()))]
+
+        label_end = fitted.index(":") + 1
+        return row.encode(), [
+            ("data_name", len(fitted[:label_end].encode())),
+            (None, len((fitted[label_end:] + padding).encode())),
+        ]
+
+    def render(
+        self,
+        size: tuple[()] | tuple[int] | tuple[int, int],
+        focus: bool = False,
+    ) -> urwid.canvas.Canvas:
+        maxcol, maxrow = size
+        if maxcol <= 0 or maxrow <= 0:
+            return urwid.canvas.TextCanvas([(" " * maxcol).encode()] * maxrow)
+
+        rows = []
+        attrs = []
+        for line in self.lines[:maxrow]:
+            row, row_attrs = self._row_attrs(line, maxcol)
+            rows.append(row)
+            attrs.append(row_attrs)
+
+        while len(rows) < maxrow:
+            row = (" " * maxcol).encode()
+            rows.append(row)
+            attrs.append([(None, len(row))])
+
+        return urwid.canvas.TextCanvas(rows, attrs)
+
+
+class HoverPopup(urwid.WidgetWrap):
+    """Small hover popup rendered as a boxed text canvas."""
+
     _selectable = False
     MAX_WIDTH = 72
     MAX_HEIGHT = 16
@@ -87,7 +135,17 @@ class HoverPopup(urwid.widget.Widget):
     def __init__(self, lines: Sequence[str], bold_labels: bool = False) -> None:
         self.lines = list(lines)
         self.bold_labels = bold_labels
-        super().__init__()
+        symbols = urwid.LineBox.Symbols.LIGHT
+        body = _HoverPopupBody(self.lines, bold_labels)
+        super().__init__(
+            urwid.LineBox(
+                body,
+                tlcorner=symbols.TOP_LEFT_ROUNDED,
+                trcorner=symbols.TOP_RIGHT_ROUNDED,
+                blcorner=symbols.BOTTOM_LEFT_ROUNDED,
+                brcorner=symbols.BOTTOM_RIGHT_ROUNDED,
+            )
+        )
 
     @property
     def desired_width(self) -> int:
@@ -98,21 +156,6 @@ class HoverPopup(urwid.widget.Widget):
     def desired_height(self) -> int:
         return max(3, min(len(self.lines) + 2, self.MAX_HEIGHT))
 
-    def _row_attrs(self, line: str, inner_width: int) -> tuple[bytes, list[tuple[str | None, int]]]:
-        fitted = str_fit_width(line, inner_width)
-        padding = " " * (inner_width - str_width(fitted))
-        row = "│" + fitted + padding + "│"
-
-        if not self.bold_labels or ":" not in fitted:
-            return row.encode(), [(None, len(row.encode()))]
-
-        label_end = fitted.index(":") + 1
-        return row.encode(), [
-            (None, len("│".encode())),
-            ("data_name", len(fitted[:label_end].encode())),
-            (None, len((fitted[label_end:] + padding + "│").encode())),
-        ]
-
     def render(
         self,
         size: tuple[()] | tuple[int] | tuple[int, int],
@@ -121,24 +164,7 @@ class HoverPopup(urwid.widget.Widget):
         maxcol, maxrow = size
         if maxcol < 2 or maxrow < 2:
             return urwid.canvas.TextCanvas([(" " * maxcol).encode()] * maxrow)
-
-        inner_width = maxcol - 2
-        body_height = maxrow - 2
-        rows = ["┌" + "─" * inner_width + "┐"]
-        attrs = [[(None, len(rows[0].encode()))]]
-        for line in self.lines[:body_height]:
-            row, row_attrs = self._row_attrs(line, inner_width)
-            rows.append(row.decode())
-            attrs.append(row_attrs)
-
-        while len(rows) < maxrow - 1:
-            row = "│" + " " * inner_width + "│"
-            rows.append(row)
-            attrs.append([(None, len(row.encode()))])
-
-        rows.append("└" + "─" * inner_width + "┘")
-        attrs.append([(None, len(rows[-1].encode()))])
-        return urwid.canvas.TextCanvas([row.encode() for row in rows], attrs)
+        return super().render(size, focus)
 
 
 class Top(urwid.widget.Widget):
