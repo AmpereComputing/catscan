@@ -68,6 +68,7 @@ palette = [
     ("button", "light cyan", "black", None, "#ffa", solarized["base03"]),
     ("button_even", "light cyan", "black", None, "#ffa", solarized["base03"]),
     ("button_odd", "light cyan", "dark gray", None, "#ffa", solarized["base02"]),
+    ("hover_popup_label", "light cyan", "black", None, "#ffa", solarized["base03"]),
     ("ampere_red_fg", "light red", "black", None, "#f00", "g3"),
 ]
 

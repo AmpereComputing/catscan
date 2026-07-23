@@ -17,6 +17,7 @@ from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
 from catscan.__main__ import XTERM_ENABLE_ALL_MOTION, load_mapping_file_abbreviations, setup
+from catscan.colors import palette
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 from catscan.state import HoverTarget
@@ -328,13 +329,13 @@ class TestMain(CatscanDataTest):
         self.assertNotIn(event.name, top._hover_popup_lines())
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
 
-    def test_hover_popup_single_event_bolds_data_names(self):
+    def test_hover_popup_single_event_colors_data_names_like_buttons(self):
         canvas = HoverPopup(["time: 100 ps", "event.value: 1"], bold_labels=True).render((24, 4), True)
         rows = list(canvas.content())
 
-        self.assertEqual("data_name", rows[1][1][0])
+        self.assertEqual("hover_popup_label", rows[1][1][0])
         self.assertEqual(b"time:", rows[1][1][2])
-        self.assertEqual("data_name", rows[2][1][0])
+        self.assertEqual("hover_popup_label", rows[2][1][0])
         self.assertEqual(b"event.value:", rows[2][1][2])
 
     def test_hover_popup_uses_rounded_line_box(self):
@@ -346,12 +347,17 @@ class TestMain(CatscanDataTest):
         self.assertEqual("╰", lines[-1][0])
         self.assertEqual("╯", lines[-1][-1])
 
-    def test_hover_popup_range_bolds_abbreviations(self):
+    def test_hover_popup_range_colors_abbreviations_like_buttons(self):
         canvas = HoverPopup(["e0: 2 (100.00%)"], bold_labels=True).render((24, 3), True)
         row = list(canvas.content())[1]
 
-        self.assertEqual("data_name", row[1][0])
+        self.assertEqual("hover_popup_label", row[1][0])
         self.assertEqual(b"e0:", row[1][2])
+
+    def test_hover_popup_label_matches_button_style(self):
+        palette_by_name = {entry[0]: entry[1:] for entry in palette}
+
+        self.assertEqual(palette_by_name["button"], palette_by_name["hover_popup_label"])
 
     def test_hover_popup_omits_visible_abbrev(self):
         top = self.loaded_top()
@@ -379,7 +385,7 @@ class TestMain(CatscanDataTest):
         self.assertIn(f"{abbrev}: 2 (100.00%)", text)
         self.assertTrue(
             any(
-                attr == "data_name" and segment == f"{abbrev}:".encode()
+                attr == "hover_popup_label" and segment == f"{abbrev}:".encode()
                 for row in canvas.content()
                 for attr, _cs, segment in row
             )

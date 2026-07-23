@@ -81,6 +81,7 @@ class _HoverPopupBody(urwid.widget.Widget):
 
     _sizing = frozenset(["box"])
     _selectable = False
+    LABEL_ATTR = "hover_popup_label"
 
     def __init__(self, lines: Sequence[str], bold_labels: bool = False) -> None:
         self.lines = list(lines)
@@ -97,7 +98,7 @@ class _HoverPopupBody(urwid.widget.Widget):
 
         label_end = fitted.index(":") + 1
         return row.encode(), [
-            ("data_name", len(fitted[:label_end].encode())),
+            (self.LABEL_ATTR, len(fitted[:label_end].encode())),
             (None, len((fitted[label_end:] + padding).encode())),
         ]
 
