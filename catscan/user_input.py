@@ -197,6 +197,6 @@ def is_mouse_hover_event(event: str, button: int) -> bool:
     reports xterm button code 35 as "mouse drag" with button 4, which overlaps
     with scroll-wheel numbering but has a different action.
     """
-    return (button == 0 and event.endswith(("mouse drag", "mouse press", "mouse release"))) or (
+    return (button == 0 and event.endswith(("mouse drag", "mouse press"))) or (
         button == 4 and event.endswith("mouse drag")
     )

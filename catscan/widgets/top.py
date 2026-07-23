@@ -1891,7 +1891,9 @@ class Top(urwid.widget.Widget):
         else:
             handled = self.frame.mouse_event(size, event, button, col, row, focus)
 
-        if handled and not hover_event:
+        if hover_event and not handled:
+            self.clear_hover()
+        elif handled and not hover_event:
             self._invalidate()
         return handled
 

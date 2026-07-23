@@ -295,6 +295,33 @@ class TestMain(CatscanDataTest):
         self.assertFalse(top.clear_hover())
         self.assertEqual(4, len(invalidations))
 
+    def test_buttonless_mouse_release_is_not_hover(self):
+        top = self.loaded_top()
+        dispatched = []
+
+        def mouse_event(size, event, button, col, row, focus):
+            dispatched.append((event, button))
+            return True
+
+        top.frame.mouse_event = mouse_event
+
+        top.mouse_event((120, 40), "mouse press", 1, 0, 0, True)
+        top.mouse_event((120, 40), "mouse release", 0, 0, 0, True)
+
+        self.assertFalse(top.hover_tracking_supported)
+        self.assertEqual(("mouse release", 1), dispatched[-1])
+
+    def test_hover_event_outside_event_view_clears_popup(self):
+        top = self.loaded_top()
+        top._current_mouse_cell = (20, 4)
+        event = self.first_event("event_0")
+        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        top.frame.mouse_event = lambda size, event, button, col, row, focus: False
+
+        top.mouse_event((120, 40), "mouse drag", 4, 0, 0, True)
+
+        self.assertFalse(top._hover_target)
+
     def test_hover_command_disables_single_event_hover(self):
         top = self.loaded_top()
         top._current_mouse_cell = (20, 4)
