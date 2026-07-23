@@ -3,6 +3,7 @@
 
 import os
 import unittest
+from contextlib import suppress
 from functools import partial
 from io import BufferedReader, TextIOWrapper
 from pathlib import Path
@@ -30,7 +31,7 @@ class Args:
         self.instruction_commit_event = "core.commit"
         self.instruction_commit_index = "core.inum"
         self.convert_enumerations = True
-        self.debug = True
+        self.debug = False
 
         self.__dict__.update(kwargs)
 
@@ -65,9 +66,13 @@ class TestingScreen(urwid.display.raw.Screen):
             self.input_w.write("\r\n")
         self.input_w.flush()
 
+    def close(self):
+        for file in (self.input_r, self.input_w):
+            with suppress(ValueError):
+                file.close()
+
     def __del__(self):
-        self.input_r.close()
-        self.input_w.close()
+        self.close()
 
 
 class TestMappingFileAbbreviations(unittest.TestCase):
@@ -179,6 +184,11 @@ class TestMain(CatscanDataTest):
         self.logging = NamedTemporaryFile()
         self.output = TemporaryFile("w+")
         self.screen = TestingScreen(self.output)
+
+    def tearDown(self):
+        self.screen.close()
+        self.output.close()
+        self.logging.close()
 
     def test_open(self):
         out = self.run_catscan(self.args())

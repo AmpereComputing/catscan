@@ -357,7 +357,7 @@ class CommitSyncer:
 
     def send(self, sync_state: CommitSyncState) -> None:
         if not self.syncing:
-            logging.warning(
+            logging.debug(
                 f"Dropping to-send commit sync message {sync_state} because the sync is either not initialized yet or has been closed/stopped."
             )
             return
@@ -368,7 +368,7 @@ class CommitSyncer:
 
     def receive(self, sync_state: CommitSyncState) -> None:
         if not self.syncing:
-            logging.warning(
+            logging.debug(
                 f"Dropping received commit sync message {sync_state} because the sync is either not initialized yet or has been closed/stopped."
             )
             return
