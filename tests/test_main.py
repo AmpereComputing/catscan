@@ -188,6 +188,7 @@ class TestMain(CatscanDataTest):
 
         events = [trace_events.trace_spec("event_*")]
         cls.set_event_stream_params(events=events)
+        cls.loaded_event_data = None
 
     def args(self, **kwargs):
         return Args(
@@ -200,8 +201,13 @@ class TestMain(CatscanDataTest):
     def press_key(self, top, key):
         return top.keypress(self.screen.get_cols_rows(), key)
 
+    def event_data(self):
+        if self.__class__.loaded_event_data is None:
+            self.__class__.loaded_event_data = self.load_event_data()
+        return self.__class__.loaded_event_data
+
     def first_event(self, row: str):
-        return next(self.esd.event_rows[row][0:PS_PER_CYCLE])
+        return next(self.event_data().event_rows[row][0:PS_PER_CYCLE])
 
     def canvas_text(self, lines: Iterable[bytes]) -> str:
         return "\n".join(line.decode() for line in lines)
@@ -210,7 +216,7 @@ class TestMain(CatscanDataTest):
         top = setup(self.args(), screen=self.screen)
         top.cached_maxcol = 120
         top.update_state(top.state.copy_with(loading=False))
-        top.update_stream_data(self.esd)
+        top.update_stream_data(self.event_data())
         return top
 
     def run_catscan(self, args, *steps: tuple[int, str]):
@@ -226,7 +232,6 @@ class TestMain(CatscanDataTest):
         return self.screen.read_all()
 
     def setUp(self):
-        self.esd = self.load_event_data()
         self.logging = NamedTemporaryFile()
         self.output = TemporaryFile("w+")
         self.screen = TestingScreen(self.output)
