@@ -16,10 +16,11 @@ import urwid
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
-from catscan.__main__ import XTERM_ENABLE_ALL_MOTION, load_mapping_file_abbreviations, setup
+from catscan.__main__ import load_mapping_file_abbreviations, setup
 from catscan.colors import palette
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
+from catscan.mouse_tracking import XTERM_ENABLE_ALL_MOTION
 from catscan.state import HoverTarget
 from catscan.user_input import ACTIONS, action_mouseevents, is_mouse_hover_event, translate_mouseevent
 from catscan.widgets.event_sidebar import EventDetailDataText

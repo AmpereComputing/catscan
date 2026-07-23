@@ -9,7 +9,6 @@ import logging
 import os
 import runpy
 import warnings
-from typing import Any
 
 import urwid
 
@@ -25,6 +24,7 @@ from catscan.events.mapping import (
     value_map_abbreviation_spec,
     value_string_abbreviation_spec,
 )
+from catscan.mouse_tracking import enable_mouse_hover_tracking
 from catscan.widgets.top import Top
 
 HEXARGS_DEFAULT = [
@@ -39,8 +39,6 @@ INSTARGS_DEFAULT = [
     "instruction",
     "inst_bytes",
 ]
-XTERM_ENABLE_ALL_MOTION = "\033[?1003h"
-XTERM_DISABLE_ALL_MOTION = "\033[?1003l"
 
 
 def static_abbreviation_spec(arg: str) -> tuple[str, str]:
@@ -68,35 +66,6 @@ def load_mapping_file_abbreviations(mapping_files: list[str]) -> list[DynamicAbb
         runpy.run_path(mapping_file, init_globals={"add_abbreviation": add_abbreviation})
 
     return abbreviations
-
-
-def enable_mouse_hover_tracking(screen: urwid.BaseScreen) -> bool:
-    screen.set_mouse_tracking(True)
-
-    if not hasattr(screen, "write"):
-        return False
-
-    screen.write(XTERM_ENABLE_ALL_MOTION)
-
-    if getattr(screen, "_catscan_hover_tracking_wrapped", False):
-        return True
-
-    original_start = screen.start
-    original_stop = screen.stop
-
-    def start_with_hover_tracking(*args: Any, **kwargs: Any) -> Any:
-        context = original_start(*args, **kwargs)
-        screen.write(XTERM_ENABLE_ALL_MOTION)
-        return context
-
-    def stop_with_hover_restore(*args: Any, **kwargs: Any) -> None:
-        screen.write(XTERM_DISABLE_ALL_MOTION)
-        return original_stop(*args, **kwargs)
-
-    screen.start = start_with_hover_tracking
-    screen.stop = stop_with_hover_restore
-    screen._catscan_hover_tracking_wrapped = True
-    return True
 
 
 def parse_args() -> argparse.Namespace:
