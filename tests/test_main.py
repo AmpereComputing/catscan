@@ -146,6 +146,30 @@ add_abbreviation(ValueStringAbbreviation(["second"], value_suffix="second_suffix
             ["first_suffix", "second_suffix"], [abbreviation.value_suffix for abbreviation in abbreviations]
         )
 
+    def test_setup_failure_does_not_enable_hover_tracking(self):
+        with TemporaryDirectory() as directory, TemporaryFile("w+") as output:
+            mapping_file = self.write_mapping_file(
+                directory,
+                "mapping.py",
+                """
+add_abbreviation("invalid")
+""",
+            )
+            screen = TestingScreen(output)
+
+            with self.assertRaisesRegex(TypeError, "expected DynamicAbbreviation, got str"):
+                setup(Args(mapping_file=[mapping_file]), screen=screen)
+
+            self.assertNotIn(XTERM_ENABLE_ALL_MOTION, screen.read_all())
+
+
+class TestHoverTarget(unittest.TestCase):
+    def test_accepts_zero_event_row_key(self):
+        hover = HoverTarget(0, time_range=(0, PS_PER_CYCLE), within_transaction=True)
+
+        self.assertTrue(hover)
+        self.assertEqual(0, hover.event_row)
+
 
 class TestMain(CatscanDataTest):
     @classmethod
@@ -308,7 +332,6 @@ class TestMain(CatscanDataTest):
         top.mouse_event((120, 40), "mouse press", 1, 0, 0, True)
         top.mouse_event((120, 40), "mouse release", 0, 0, 0, True)
 
-        self.assertFalse(top.hover_tracking_supported)
         self.assertEqual(("mouse release", 1), dispatched[-1])
 
     def test_hover_event_outside_event_view_clears_popup(self):
@@ -365,8 +388,6 @@ class TestMain(CatscanDataTest):
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)
 
-        self.assertTrue(top.hover_tracking_enabled)
-        self.assertFalse(top.hover_tracking_supported)
         self.assertNotIn("hover:armed", text)
         self.assertNotIn("hover:on", text)
 
@@ -374,7 +395,6 @@ class TestMain(CatscanDataTest):
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)
 
-        self.assertTrue(top.hover_tracking_supported)
         self.assertNotIn("hover:armed", text)
         self.assertNotIn("hover:on", text)
 

@@ -308,7 +308,6 @@ def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> T
     loop.screen.set_terminal_properties(colors)
     loop.screen.reset_default_terminal_palette()
     loop.screen.focus_reporting = True
-    top.hover_tracking_enabled = enable_mouse_hover_tracking(loop.screen)
 
     dynamic_abbreviations = (
         args.value_string_abbrev + args.value_map_abbrev + load_mapping_file_abbreviations(args.mapping_file)
@@ -348,6 +347,8 @@ def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> T
         transaction_end=args.tx_end,
         convert_enumerations=args.convert_enumerations,
     )
+
+    enable_mouse_hover_tracking(loop.screen)
 
     return top
 

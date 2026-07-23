@@ -205,7 +205,7 @@ class HoverTarget:
         abbrev_visible: bool = False,
     ):
         assert not (event and time_range)
-        assert event_row or not (event or time_range)
+        assert event_row is not None or not (event or time_range)
 
         self._event_row = event_row
         self._event = event

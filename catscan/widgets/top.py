@@ -219,8 +219,6 @@ class Top(urwid.widget.Widget):
         self._hover_cell = None
         self._hover_key = self._hover_target.key()
         self._current_mouse_cell = None
-        self.hover_tracking_enabled = False
-        self.hover_tracking_supported = False
         self.single_event_hover_enabled = True
         self.multiple_event_hover_enabled = True
 
@@ -956,9 +954,6 @@ class Top(urwid.widget.Widget):
         return self.update_state(new_state)
 
     def on_hover(self, hover: HoverTarget) -> bool:
-        if hover and not self.hover_tracking_supported:
-            self.hover_tracking_supported = True
-
         if not self._hover_enabled_for_target(hover):
             hover = HoverTarget()
 
@@ -1847,9 +1842,6 @@ class Top(urwid.widget.Widget):
         self._current_mouse_cell = (col, row)
         keyless_event = re.sub(r"^.*?mouse", "mouse", event)
         hover_event = is_mouse_hover_event(event, button)
-        if hover_event and not self.hover_tracking_supported:
-            self.hover_tracking_supported = True
-            self._invalidate()
         original_event = event
         if hover_event and (self.state.show_help or len(self.state.messages) > 0):
             self.clear_hover()
