@@ -371,6 +371,17 @@ class TestMain(CatscanDataTest):
         self.assertEqual(f"time: {event.time // PS_PER_CYCLE:,} cyc", lines[0])
         self.assertNotIn("ps", lines[0])
 
+    def test_hover_popup_transaction_single_event_starts_with_name(self):
+        top = self.loaded_top()
+        event = self.first_event("event_0")
+
+        top.on_hover(HoverTarget(1, event=event, within_transaction=True, view="main.transaction"))
+        lines = top._hover_popup_lines()
+
+        self.assertEqual(f"name: {event.name}", lines[0])
+        self.assertIn(f"abbrev: {event.abbrev}", lines)
+        self.assertIn(f"time: {event.time // PS_PER_CYCLE:,} cyc", lines)
+
     def test_hover_popup_range_contains_histogram(self):
         top = self.loaded_top()
         top._current_mouse_cell = (20, 4)

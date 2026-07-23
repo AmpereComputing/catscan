@@ -475,6 +475,8 @@ class Top(urwid.widget.Widget):
             ]
             if not hover.abbrev_visible:
                 lines.insert(0, f"abbrev: {event.abbrev}")
+            if hover.within_transaction():
+                lines.insert(0, f"name: {event.name}")
             lines.extend(f"{name}: {value}" for name, value in self._format_hover_data(event).items())
             return lines, True
 
