@@ -11,7 +11,7 @@ from perf_streams.event_stream import Event
 
 from catscan.commit_sync import CommitSyncer
 from catscan.data import EventStreamData, EventStreamDataEventView, EventStreamDataView
-from catscan.state import CatscanState, HoverTarget, Selection
+from catscan.state import CatscanState, HoverSelection, Selection
 from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents, is_mouse_hover_event
 from catscan.widgets.event_row import EventRow, EventRowBase, RowType
 from catscan.widgets.scrollbar import FixedWidthScrollBar
@@ -480,7 +480,7 @@ class EventView(urwid.WidgetWrap, View):
             selection.assign_view(self.name)
         return self._on_extend_selection(selection, *args, **kwargs)
 
-    def on_hover(self, hover: HoverTarget) -> bool:
+    def on_hover(self, hover: HoverSelection) -> bool:
         if hover:
             hover.assign_view(self.name)
         return self._on_hover(hover)
@@ -706,7 +706,7 @@ class EventView(urwid.WidgetWrap, View):
         if is_hover_event:
             handled = self._w.mouse_event(size, event, button, col, row, focus)
             if not handled:
-                self.on_hover(HoverTarget())
+                self.on_hover(HoverSelection())
             return True
         if eb in action_mouseevents[ACTIONS.ZOOM_IN]:
             if col > self.state.column_header_width:

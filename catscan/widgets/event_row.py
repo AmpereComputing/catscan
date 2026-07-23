@@ -12,7 +12,7 @@ import urwid
 
 from catscan.data import NUM_EVENT_COLORS, Event, EventData, TransactionEventData
 from catscan.search import Searcher
-from catscan.state import CatscanState, HashableFrozenDict, HoverTarget, Selection
+from catscan.state import CatscanState, HashableFrozenDict, HoverSelection, Selection
 from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents, is_mouse_hover_event
 from catscan.util import even_odd_focused, str_fit_width
 
@@ -750,21 +750,21 @@ class EventRow(EventRowBase):
     def _adjust_selection(self, event: Event, **kwargs: Any) -> Selection:
         return self.state.selection.adjust_within_row(event, duration=self.state.ps_per_cycle, **kwargs)
 
-    def _make_hover(self, **kwargs: Any) -> HoverTarget:
-        return HoverTarget(
+    def _make_hover(self, **kwargs: Any) -> HoverSelection:
+        return HoverSelection(
             event_row=self.ed.key(),
             within_transaction=self._transaction_row,
             abbrev_visible=self.expanded and self.state.cycles_per_char.numerator == 1,
             **kwargs,
         )
 
-    def _ps_range_to_hover(self, start_ps: int, end_ps: int) -> HoverTarget:
+    def _ps_range_to_hover(self, start_ps: int, end_ps: int) -> HoverSelection:
         events = list(self.ed[start_ps:end_ps])
         if len(events) == 1:
             return self._make_hover(event=events[0])
         if events:
             return self._make_hover(time_range=(start_ps, end_ps))
-        return HoverTarget()
+        return HoverSelection()
 
     def _ps_range_to_selection(self, start_ps: int, end_ps: int) -> Selection:
         it = self.ed[start_ps:end_ps]
@@ -853,7 +853,7 @@ class EventRow(EventRowBase):
             return self._ps_range_to_selection(*content)
         return Selection()
 
-    def mouse_to_hover(self, col: int, row: int) -> HoverTarget:
+    def mouse_to_hover(self, col: int, row: int) -> HoverSelection:
         """
         Given a column and row within this widget, return a hover target for
         the visible event content under the cursor.
@@ -863,7 +863,7 @@ class EventRow(EventRowBase):
             return self._make_hover(event=content)
         if content is not None:
             return self._ps_range_to_hover(*content)
-        return HoverTarget()
+        return HoverSelection()
 
     def mouse_to_next_selection(self, col: int, reverse: bool = False) -> Selection:
         if self.expanded:

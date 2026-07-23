@@ -9,7 +9,7 @@ import urwid
 from perf_streams.event_stream import Event
 
 from catscan.data import EventStreamData, summary_histogram
-from catscan.state import CatscanState, HoverTarget
+from catscan.state import CatscanState, HoverSelection
 from catscan.util import str_fit_width, str_width
 
 
@@ -123,7 +123,7 @@ class HoverPopupController:
         self.get_sidebar_width = get_sidebar_width
         self.invalidate = invalidate
 
-        self.target = HoverTarget()
+        self.target = HoverSelection()
         self.cell: tuple[int, int] | None = None
         self.key = self.target.key()
         self.current_mouse_cell: tuple[int, int] | None = None
@@ -148,7 +148,7 @@ class HoverPopupController:
     ) -> None:
         self.current_mouse_cell = (col, row)
 
-    def data_view_for_hover(self, hover: HoverTarget) -> Any:
+    def data_view_for_hover(self, hover: HoverSelection) -> Any:
         return self.stream_data.transaction_events() if hover.within_transaction() else self.stream_data.events()
 
     def format_data(self, event: Event) -> dict[str, Any]:
@@ -173,7 +173,7 @@ class HoverPopupController:
             display_data = dict(sorted(display_data.items()))
         return {strip_prefix(name, event.name): value for name, value in display_data.items()}
 
-    def single_event_for_hover(self, hover: HoverTarget) -> Event | None:
+    def single_event_for_hover(self, hover: HoverSelection) -> Event | None:
         if hover.is_event():
             return hover.event
 
@@ -183,7 +183,7 @@ class HoverPopupController:
             return event
         return None
 
-    def enabled_for_target(self, hover: HoverTarget) -> bool:
+    def enabled_for_target(self, hover: HoverSelection) -> bool:
         if not hover:
             return True
         if not self.single_event_enabled and not self.multiple_event_enabled:
@@ -251,9 +251,9 @@ class HoverPopupController:
         canvas.overlay(urwid.CompositeCanvas(popup.render((width, height), focus)), left=left, top=top)
         return canvas
 
-    def on_hover(self, hover: HoverTarget) -> bool:
+    def on_hover(self, hover: HoverSelection) -> bool:
         if not self.enabled_for_target(hover):
-            hover = HoverTarget()
+            hover = HoverSelection()
 
         cell = self.current_mouse_cell
         key = hover.key(cell)
@@ -267,4 +267,4 @@ class HoverPopupController:
         return True
 
     def clear(self) -> bool:
-        return self.on_hover(HoverTarget())
+        return self.on_hover(HoverSelection())
