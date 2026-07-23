@@ -295,6 +295,43 @@ class TestMain(CatscanDataTest):
         self.assertFalse(top.clear_hover())
         self.assertEqual(4, len(invalidations))
 
+    def test_hover_command_disables_single_event_hover(self):
+        top = self.loaded_top()
+        top._current_mouse_cell = (20, 4)
+        event = self.first_event("event_0")
+
+        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        self.assertTrue(top._hover_target)
+
+        self.assertTrue(top.command("hover single=no"))
+        self.assertFalse(top.single_event_hover_enabled)
+        self.assertTrue(top.multiple_event_hover_enabled)
+        self.assertFalse(top._hover_target)
+
+        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        self.assertFalse(top._hover_target)
+
+        top.on_hover(HoverTarget("event_0", time_range=(0, PS_PER_CYCLE), view="main.resource"))
+        self.assertFalse(top._hover_target)
+
+        top.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
+        self.assertTrue(top._hover_target.is_time_range())
+
+    def test_hover_command_disables_multiple_event_hover(self):
+        top = self.loaded_top()
+        top._current_mouse_cell = (20, 4)
+
+        self.assertTrue(top.command("hover multiple=no"))
+        self.assertTrue(top.single_event_hover_enabled)
+        self.assertFalse(top.multiple_event_hover_enabled)
+
+        top.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
+        self.assertFalse(top._hover_target)
+
+        event = self.first_event("event_0")
+        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        self.assertTrue(top._hover_target.is_event())
+
     def test_status_bar_omits_hover_tracking_state(self):
         top = self.loaded_top()
 

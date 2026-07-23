@@ -164,6 +164,7 @@ wheel up/down            | zoom in/out (time-wise)
 `SHIFT` + wheel up/down  | translate event rows right/left
 double left click        | jump to next event in empty row
 `CTRL` double left click | jump to previous event in empty row
+`:hover single=yes|no multiple=yes|no` | enable or disable hover popups for single-event and multiple-event cells
 
 ### Exiting
 

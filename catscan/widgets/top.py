@@ -221,6 +221,8 @@ class Top(urwid.widget.Widget):
         self._current_mouse_cell = None
         self.hover_tracking_enabled = False
         self.hover_tracking_supported = False
+        self.single_event_hover_enabled = True
+        self.multiple_event_hover_enabled = True
 
         self.commit_sync_event = args.instruction_commit_event
         self.commit_sync_data_name = args.instruction_commit_index
@@ -462,6 +464,15 @@ class Top(urwid.widget.Widget):
         if event is not None and next(it, None) is None:
             return event
         return None
+
+    def _hover_enabled_for_target(self, hover: HoverTarget) -> bool:
+        if not hover:
+            return True
+        if not self.single_event_hover_enabled and not self.multiple_event_hover_enabled:
+            return False
+        if self._single_event_for_hover(hover) is not None:
+            return self.single_event_hover_enabled
+        return self.multiple_event_hover_enabled
 
     def _hover_popup_content(self) -> tuple[list[str], bool]:
         hover = self._hover_target
@@ -947,6 +958,9 @@ class Top(urwid.widget.Widget):
     def on_hover(self, hover: HoverTarget) -> bool:
         if hover and not self.hover_tracking_supported:
             self.hover_tracking_supported = True
+
+        if not self._hover_enabled_for_target(hover):
+            hover = HoverTarget()
 
         cell = self._current_mouse_cell
         key = hover.key(cell)
@@ -1580,6 +1594,17 @@ class Top(urwid.widget.Widget):
             else:
                 self.show_help()
             return False
+        if command == Commands.HOVER:
+            if not args:
+                self.add_message(f"'{command}' requires single= and/or multiple=")
+                return False
+            if "single" in args:
+                self.single_event_hover_enabled = args["single"]
+            if "multiple" in args:
+                self.multiple_event_hover_enabled = args["multiple"]
+            if not self._hover_enabled_for_target(self._hover_target):
+                self.clear_hover()
+            return True
         if self.state.loading:
             self.add_message(f"'{command}' cannot be executed while loading")
             return False
