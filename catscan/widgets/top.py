@@ -481,7 +481,7 @@ class Top(urwid.widget.Widget):
             self._data_view_for_hover(hover).get(hover.event_row)[hover.start_ps : hover.end_ps]
         )
         total = histogram.total()
-        return [f"{abbrev}: {count} ({count / total:.2%})" for abbrev, count in histogram.most_common(99)], False
+        return [f"{abbrev}: {count} ({count / total:.2%})" for abbrev, count in histogram.most_common(99)], True
 
     def _hover_popup_lines(self) -> list[str]:
         lines, _bold_labels = self._hover_popup_content()

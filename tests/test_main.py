@@ -346,11 +346,12 @@ class TestMain(CatscanDataTest):
         self.assertEqual("╰", lines[-1][0])
         self.assertEqual("╯", lines[-1][-1])
 
-    def test_hover_popup_range_does_not_bold_abbreviations(self):
-        canvas = HoverPopup(["e0: 2 (100.00%)"], bold_labels=False).render((24, 3), True)
+    def test_hover_popup_range_bolds_abbreviations(self):
+        canvas = HoverPopup(["e0: 2 (100.00%)"], bold_labels=True).render((24, 3), True)
         row = list(canvas.content())[1]
 
-        self.assertNotIn("data_name", [attr for attr, _cs, _text in row])
+        self.assertEqual("data_name", row[1][0])
+        self.assertEqual(b"e0:", row[1][2])
 
     def test_hover_popup_omits_visible_abbrev(self):
         top = self.loaded_top()
@@ -374,7 +375,15 @@ class TestMain(CatscanDataTest):
 
         self.assertNotIn("Summary of", text)
         self.assertNotIn("abbreviation", text)
-        self.assertIn(f"{self.first_event('event_0').abbrev}: 2 (100.00%)", text)
+        abbrev = self.first_event("event_0").abbrev
+        self.assertIn(f"{abbrev}: 2 (100.00%)", text)
+        self.assertTrue(
+            any(
+                attr == "data_name" and segment == f"{abbrev}:".encode()
+                for row in canvas.content()
+                for attr, _cs, segment in row
+            )
+        )
 
     def test_hover_with_selection_uses_popup(self):
         top = self.loaded_top()
