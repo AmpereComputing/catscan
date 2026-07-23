@@ -1,11 +1,13 @@
 # Copyright (c) 2026 Ampere Computing. All rights reserved.
 # SPDX-License-Identifier: BSD-3-Clause
 
+import logging
 import os
+import sys
 import unittest
 from contextlib import suppress
 from functools import partial
-from io import BufferedReader, TextIOWrapper
+from io import BufferedReader, StringIO, TextIOWrapper
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory, TemporaryFile
 
@@ -31,7 +33,7 @@ class Args:
         self.instruction_commit_event = "core.commit"
         self.instruction_commit_index = "core.inum"
         self.convert_enumerations = True
-        self.debug = False
+        self.debug = True
 
         self.__dict__.update(kwargs)
 
@@ -184,8 +186,38 @@ class TestMain(CatscanDataTest):
         self.logging = NamedTemporaryFile()
         self.output = TemporaryFile("w+")
         self.screen = TestingScreen(self.output)
+        self.capture_asyncio_logs()
+
+    def capture_asyncio_logs(self):
+        self.asyncio_log_stream = StringIO()
+        self.asyncio_log_handler = logging.StreamHandler(self.asyncio_log_stream)
+        self.asyncio_log_handler.setFormatter(logging.Formatter("%(levelname)s:%(name)s:%(message)s"))
+
+        self.asyncio_logger = logging.getLogger("asyncio")
+        self.asyncio_handlers = self.asyncio_logger.handlers[:]
+        self.asyncio_level = self.asyncio_logger.level
+        self.asyncio_propagate = self.asyncio_logger.propagate
+
+        self.asyncio_logger.handlers = [self.asyncio_log_handler]
+        self.asyncio_logger.setLevel(logging.DEBUG)
+        self.asyncio_logger.propagate = False
+
+    def _test_failed(self):
+        current_test = self.id()
+        result = self._outcome.result
+        return any(test.id() == current_test for test, _ in result.errors + result.failures)
 
     def tearDown(self):
+        self.asyncio_logger.handlers = self.asyncio_handlers
+        self.asyncio_logger.setLevel(self.asyncio_level)
+        self.asyncio_logger.propagate = self.asyncio_propagate
+
+        captured_logs = self.asyncio_log_stream.getvalue()
+        if captured_logs and self._test_failed():
+            sys.stderr.write(f"\nCaptured asyncio logs for {self.id()}:\n{captured_logs}")
+
+        self.asyncio_log_handler.close()
+        self.asyncio_log_stream.close()
         self.screen.close()
         self.output.close()
         self.logging.close()
