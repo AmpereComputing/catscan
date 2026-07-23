@@ -319,20 +319,20 @@ class TestMain(CatscanDataTest):
         hover = HoverTarget("event_0", event=self.first_event("event_0"), view="main.resource")
         self.move_mouse_to_cell(top, (20, 4))
 
-        self.assertTrue(top.on_hover(hover))
-        self.assertFalse(top.on_hover(hover))
+        self.assertTrue(top.hover_popup.on_hover(hover))
+        self.assertFalse(top.hover_popup.on_hover(hover))
         self.assertEqual(1, len(invalidations))
 
         self.move_mouse_to_cell(top, (21, 4))
-        self.assertTrue(top.on_hover(hover))
+        self.assertTrue(top.hover_popup.on_hover(hover))
         self.assertEqual(2, len(invalidations))
 
         range_hover = HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource")
-        self.assertTrue(top.on_hover(range_hover))
+        self.assertTrue(top.hover_popup.on_hover(range_hover))
         self.assertEqual(3, len(invalidations))
 
-        self.assertTrue(top.clear_hover())
-        self.assertFalse(top.clear_hover())
+        self.assertTrue(top.hover_popup.clear())
+        self.assertFalse(top.hover_popup.clear())
         self.assertEqual(4, len(invalidations))
 
     def test_buttonless_mouse_release_is_not_hover(self):
@@ -366,49 +366,49 @@ class TestMain(CatscanDataTest):
         top = self.loaded_top()
         self.move_mouse_to_cell(top, (20, 4))
         event = self.first_event("event_0")
-        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        top.hover_popup.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
         top.frame.mouse_event = lambda size, event, button, col, row, focus: False
 
         top.mouse_event((120, 40), "mouse drag", 4, 0, 0, True)
 
-        self.assertFalse(top._hover_target)
+        self.assertFalse(top.hover_popup.target)
 
     def test_hover_command_disables_single_event_hover(self):
         top = self.loaded_top()
         self.move_mouse_to_cell(top, (20, 4))
         event = self.first_event("event_0")
 
-        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
-        self.assertTrue(top._hover_target)
+        top.hover_popup.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        self.assertTrue(top.hover_popup.target)
 
         self.assertTrue(top.command("hover single=no"))
-        self.assertFalse(top.single_event_hover_enabled)
-        self.assertTrue(top.multiple_event_hover_enabled)
-        self.assertFalse(top._hover_target)
+        self.assertFalse(top.hover_popup.single_event_enabled)
+        self.assertTrue(top.hover_popup.multiple_event_enabled)
+        self.assertFalse(top.hover_popup.target)
 
-        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
-        self.assertFalse(top._hover_target)
+        top.hover_popup.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        self.assertFalse(top.hover_popup.target)
 
-        top.on_hover(HoverTarget("event_0", time_range=(0, PS_PER_CYCLE), view="main.resource"))
-        self.assertFalse(top._hover_target)
+        top.hover_popup.on_hover(HoverTarget("event_0", time_range=(0, PS_PER_CYCLE), view="main.resource"))
+        self.assertFalse(top.hover_popup.target)
 
-        top.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
-        self.assertTrue(top._hover_target.is_time_range())
+        top.hover_popup.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
+        self.assertTrue(top.hover_popup.target.is_time_range())
 
     def test_hover_command_disables_multiple_event_hover(self):
         top = self.loaded_top()
         self.move_mouse_to_cell(top, (20, 4))
 
         self.assertTrue(top.command("hover multiple=no"))
-        self.assertTrue(top.single_event_hover_enabled)
-        self.assertFalse(top.multiple_event_hover_enabled)
+        self.assertTrue(top.hover_popup.single_event_enabled)
+        self.assertFalse(top.hover_popup.multiple_event_enabled)
 
-        top.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
-        self.assertFalse(top._hover_target)
+        top.hover_popup.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
+        self.assertFalse(top.hover_popup.target)
 
         event = self.first_event("event_0")
-        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
-        self.assertTrue(top._hover_target.is_event())
+        top.hover_popup.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        self.assertTrue(top.hover_popup.target.is_event())
 
     def test_status_bar_omits_hover_tracking_state(self):
         top = self.loaded_top()
@@ -431,14 +431,14 @@ class TestMain(CatscanDataTest):
         self.move_mouse_to_cell(top, (20, 4))
         event = self.first_event("event_0")
 
-        top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
+        top.hover_popup.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)
 
         self.assertIn(event.abbrev, text)
         self.assertIn("event.value: 0", text)
         self.assertNotIn("row: event_0", text)
-        self.assertNotIn(event.name, top._hover_popup_lines())
+        self.assertNotIn(event.name, top.hover_popup.lines())
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
 
     def test_hover_popup_single_event_colors_data_names_like_buttons(self):
@@ -475,8 +475,8 @@ class TestMain(CatscanDataTest):
         top = self.loaded_top()
         event = self.first_event("event_0")
 
-        top.on_hover(HoverTarget("event_0", event=event, view="main.resource", abbrev_visible=True))
-        lines = top._hover_popup_lines()
+        top.hover_popup.on_hover(HoverTarget("event_0", event=event, view="main.resource", abbrev_visible=True))
+        lines = top.hover_popup.lines()
 
         self.assertNotIn(f"abbrev: {event.abbrev}", lines)
         self.assertNotIn("row: event_0", lines)
@@ -487,8 +487,8 @@ class TestMain(CatscanDataTest):
         top = self.loaded_top()
         event = self.first_event("event_0")
 
-        top.on_hover(HoverTarget(1, event=event, within_transaction=True, view="main.transaction"))
-        lines = top._hover_popup_lines()
+        top.hover_popup.on_hover(HoverTarget(1, event=event, within_transaction=True, view="main.transaction"))
+        lines = top.hover_popup.lines()
 
         self.assertEqual(f"name: {event.name}", lines[0])
         self.assertIn(f"abbrev: {event.abbrev}", lines)
@@ -498,7 +498,7 @@ class TestMain(CatscanDataTest):
         top = self.loaded_top()
         self.move_mouse_to_cell(top, (20, 4))
 
-        top.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
+        top.hover_popup.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)
 
@@ -521,7 +521,7 @@ class TestMain(CatscanDataTest):
 
         top.make_selection(selected_event)
         self.move_mouse_to_cell(top, (20, 4))
-        top.on_hover(HoverTarget("event_1", event=hover_event, view="main.resource"))
+        top.hover_popup.on_hover(HoverTarget("event_1", event=hover_event, view="main.resource"))
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)
 
@@ -534,11 +534,11 @@ class TestMain(CatscanDataTest):
         top = self.loaded_top()
         top.make_selection(self.first_event("event_0"))
         view_right = 120 - top.sidebar_width - 1
-        top._hover_cell = (view_right - 1, 4)
+        top.hover_popup.cell = (view_right - 1, 4)
 
-        left, _top = top._hover_popup_position(20, 5, (120, 40))
+        left, _top = top.hover_popup.position(20, 5, (120, 40))
 
-        self.assertLess(left, top._hover_cell[0])
+        self.assertLess(left, top.hover_popup.cell[0])
         self.assertLessEqual(left + 20, view_right)
 
     def test_event_detail_data_text_bolds_data_name(self):

@@ -38,7 +38,7 @@ from catscan.search import (
     PerPeriodSearcher,
     TextSearcher,
 )
-from catscan.state import CatscanState, HashableFrozenDict, HoverTarget, Selection
+from catscan.state import CatscanState, HashableFrozenDict, Selection
 from catscan.summary import generate_summary_table
 from catscan.user_input import (
     ACTIONS,
@@ -91,48 +91,6 @@ class Top(urwid.widget.Widget):
     _max_cycles_per_char = Fraction(4096, 1)
     _min_cycles_per_char = Fraction(1, 32)
     MAX_SIMULTANEOUS_TXID_HIGHLIGHTS = 32
-
-    @property
-    def _hover_target(self) -> HoverTarget:
-        return self.hover_popup.target
-
-    @_hover_target.setter
-    def _hover_target(self, target: HoverTarget) -> None:
-        self.hover_popup.target = target
-        self.hover_popup.key = target.key(self.hover_popup.cell)
-
-    @property
-    def _hover_cell(self) -> tuple[int, int] | None:
-        return self.hover_popup.cell
-
-    @_hover_cell.setter
-    def _hover_cell(self, cell: tuple[int, int] | None) -> None:
-        self.hover_popup.cell = cell
-        self.hover_popup.key = self.hover_popup.target.key(cell)
-
-    @property
-    def _hover_key(self) -> tuple[Any, ...]:
-        return self.hover_popup.key
-
-    @_hover_key.setter
-    def _hover_key(self, key: tuple[Any, ...]) -> None:
-        self.hover_popup.key = key
-
-    @property
-    def single_event_hover_enabled(self) -> bool:
-        return self.hover_popup.single_event_enabled
-
-    @single_event_hover_enabled.setter
-    def single_event_hover_enabled(self, enabled: bool) -> None:
-        self.hover_popup.single_event_enabled = enabled
-
-    @property
-    def multiple_event_hover_enabled(self) -> bool:
-        return self.hover_popup.multiple_event_enabled
-
-    @multiple_event_hover_enabled.setter
-    def multiple_event_hover_enabled(self, enabled: bool) -> None:
-        self.hover_popup.multiple_event_enabled = enabled
 
     def __init__(self, args: Namespace):
         self._infer_period = args.period is None
@@ -272,7 +230,7 @@ class Top(urwid.widget.Widget):
             on_toggle_expanded=self.toggle_expanded,
             on_make_selection=self.make_selection,
             on_extend_selection=self.extend_selection,
-            on_hover=self.on_hover,
+            on_hover=self.hover_popup.on_hover,
             on_translate_event=self.translate_event,
             **kwargs,
         )
@@ -350,32 +308,6 @@ class Top(urwid.widget.Widget):
             f"{icon} zoom (cycles/character): {self.state.cycles_per_char}{sync_status}",
             self.stream_data.source,
         )
-
-    def _data_view_for_hover(self, hover: HoverTarget) -> Any:
-        return self.hover_popup.data_view_for_hover(hover)
-
-    def _format_hover_data(self, event: Event) -> dict[str, Any]:
-        return self.hover_popup.format_data(event)
-
-    def _single_event_for_hover(self, hover: HoverTarget) -> Event | None:
-        return self.hover_popup.single_event_for_hover(hover)
-
-    def _hover_enabled_for_target(self, hover: HoverTarget) -> bool:
-        return self.hover_popup.enabled_for_target(hover)
-
-    def _hover_popup_content(self) -> tuple[list[str], bool]:
-        return self.hover_popup.content()
-
-    def _hover_popup_lines(self) -> list[str]:
-        return self.hover_popup.lines()
-
-    def _overlay_hover_popup(
-        self, canvas: urwid.Canvas, size: tuple[int, int], focus: bool = False
-    ) -> urwid.CompositeCanvas:
-        return self.hover_popup.overlay(canvas, size, focus)
-
-    def _hover_popup_position(self, width: int, height: int, size: tuple[int, int]) -> tuple[int, int]:
-        return self.hover_popup.position(width, height, size)
 
     def load_file(
         self,
@@ -554,7 +486,7 @@ class Top(urwid.widget.Widget):
         self.view_rows.update_stream_data(stream_data)
         self.event_details.update_stream_data(stream_data)
         self.summary_sidebar.update_stream_data(stream_data)
-        self.clear_hover()
+        self.hover_popup.clear()
 
         max_column_width = max([self.view_rows.max_column_header_width(), external_column_width])
         new_state = self.state.copy_with(
@@ -624,7 +556,7 @@ class Top(urwid.widget.Widget):
             if new_state.expand_rows != old_state.expand_rows:
                 self._update_view_rows(invalidate=False)
             if hover_stale:
-                self.clear_hover()
+                self.hover_popup.clear()
             self._invalidate()
 
             if should_send_commit_sync:
@@ -795,12 +727,6 @@ class Top(urwid.widget.Widget):
         self.frame.set_focus("body")
         new_state = self.state.copy_with(selection=Selection())
         return self.update_state(new_state)
-
-    def on_hover(self, hover: HoverTarget) -> bool:
-        return self.hover_popup.on_hover(hover)
-
-    def clear_hover(self) -> bool:
-        return self.hover_popup.clear()
 
     def translate_event(self, x_chars: int) -> bool:
         if x_chars == 0:
@@ -1269,7 +1195,7 @@ class Top(urwid.widget.Widget):
             if "multiple" in args:
                 self.hover_popup.multiple_event_enabled = args["multiple"]
             if not self.hover_popup.enabled_for_target(self.hover_popup.target):
-                self.clear_hover()
+                self.hover_popup.clear()
             return True
         if self.state.loading:
             self.add_message(f"'{command}' cannot be executed while loading")
@@ -1513,7 +1439,7 @@ class Top(urwid.widget.Widget):
         hover_event = is_mouse_hover_event(event, button)
         original_event = event
         if hover_event and (self.state.show_help or len(self.state.messages) > 0):
-            self.clear_hover()
+            self.hover_popup.clear()
         elif keyless_event == "mouse press":
             # Track last mouse press as release does not always have a button
             self.last_mouse_press_button = button
@@ -1553,7 +1479,7 @@ class Top(urwid.widget.Widget):
             handled = self.frame.mouse_event(size, event, button, col, row, focus)
 
         if hover_event and not handled:
-            self.clear_hover()
+            self.hover_popup.clear()
         elif handled and not hover_event:
             self._invalidate()
         return handled
