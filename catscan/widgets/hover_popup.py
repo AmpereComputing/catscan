@@ -10,7 +10,7 @@ from perf_streams.event_stream import Event
 
 from catscan.data import EventStreamData, summary_histogram
 from catscan.state import CatscanState, HoverSelection
-from catscan.util import str_fit_width, str_width
+from catscan.util import format_event_data, str_fit_width, str_width
 
 
 class _HoverPopupBody(urwid.widget.Widget):
@@ -151,28 +151,6 @@ class HoverPopupController:
     def data_view_for_hover(self, hover: HoverSelection) -> Any:
         return self.stream_data.transaction_events() if hover.within_transaction() else self.stream_data.events()
 
-    def format_data(self, event: Event) -> dict[str, Any]:
-        def strip_prefix(to_strip: str, to_compare: str) -> str:
-            def prefix(s: str) -> str:
-                return ".".join(s.split(".")[:-1])
-
-            if prefix(to_strip) == prefix(to_compare):
-                return to_strip.split(".")[-1]
-            return to_strip
-
-        def format_as_hex(item: tuple[str, Any]) -> tuple[str, Any]:
-            name, value = item
-            if self.hexargs_re.match(name):
-                if isinstance(value, str):
-                    return name, hex(int(value, base=0))
-                return name, hex(value)
-            return item
-
-        display_data = dict(map(format_as_hex, event.data.items()))
-        if self.state.sort_event_keys:
-            display_data = dict(sorted(display_data.items()))
-        return {strip_prefix(name, event.name): value for name, value in display_data.items()}
-
     def single_event_for_hover(self, hover: HoverSelection) -> Event | None:
         if hover.is_event():
             return hover.event
@@ -206,7 +184,8 @@ class HoverPopupController:
                 lines.insert(0, f"abbrev: {event.abbrev}")
             if hover.within_transaction():
                 lines.insert(0, f"name: {event.name}")
-            lines.extend(f"{name}: {value}" for name, value in self.format_data(event).items())
+            data = format_event_data(event.data, event.name, self.hexargs_re, self.state.sort_event_keys)
+            lines.extend(f"{name}: {value}" for name, value in data.items())
             return lines, True
 
         histogram = summary_histogram(

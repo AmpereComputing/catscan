@@ -20,7 +20,7 @@ from catscan.__main__ import load_mapping_file_abbreviations, setup
 from catscan.colors import palette
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
-from catscan.mouse_tracking import XTERM_ENABLE_ALL_MOTION
+from catscan.mouse_tracking import XTERM_DISABLE_ALL_MOTION, XTERM_ENABLE_ALL_MOTION
 from catscan.state import HoverSelection
 from catscan.user_input import ACTIONS, action_mouseevents, is_mouse_hover_event, translate_mouseevent
 from catscan.widgets.event_sidebar import EventDetailDataText
@@ -223,8 +223,8 @@ class TestMain(CatscanDataTest):
     def canvas_text(self, lines: Iterable[bytes]) -> str:
         return "\n".join(line.decode() for line in lines)
 
-    def loaded_top(self):
-        top = setup(self.args(), screen=self.screen)
+    def loaded_top(self, **kwargs):
+        top = setup(self.args(**kwargs), screen=self.screen)
         top.cached_maxcol = 120
         top.update_state(top.state.copy_with(loading=False))
         top.update_stream_data(self.event_data())
@@ -292,13 +292,16 @@ class TestMain(CatscanDataTest):
         top = setup(self.args(), screen=self.screen)
         before_start = self.screen.read_all()
 
+        self.assertNotIn(XTERM_ENABLE_ALL_MOTION, before_start)
         try:
             top.main_loop.screen.start()
             after_start = self.screen.read_all()
         finally:
             top.main_loop.screen.stop()
+        after_stop = self.screen.read_all()
 
         self.assertGreater(after_start.count(XTERM_ENABLE_ALL_MOTION), before_start.count(XTERM_ENABLE_ALL_MOTION))
+        self.assertIn(XTERM_DISABLE_ALL_MOTION, after_stop)
 
     def test_help(self):
         out = self.run_catscan(self.args(), (1, "?"), (2, "q"))
@@ -440,6 +443,16 @@ class TestMain(CatscanDataTest):
         self.assertNotIn("row: event_0", text)
         self.assertNotIn(event.name, top.hover_popup.lines())
         self.assertNotIn(f"hover event_0: {event.abbrev}", text)
+
+    def test_hover_popup_and_sidebar_share_event_data_formatting(self):
+        top = self.loaded_top(hex=["event.value"])
+        event = self.first_event("event_0")
+
+        top.make_selection(event)
+        top.hover_popup.on_hover(HoverSelection("event_0", event=event, view="main.resource"))
+
+        self.assertIn("event.value: 0x0", top.hover_popup.lines())
+        self.assertEqual(("0x0", "event.value"), top.event_details.event_data["event.value"])
 
     def test_hover_popup_single_event_colors_data_names_like_buttons(self):
         canvas = HoverPopup(["time: 100 ps", "event.value: 1"], bold_labels=True).render((24, 4), True)

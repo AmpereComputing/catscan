@@ -759,11 +759,13 @@ class EventRow(EventRowBase):
         )
 
     def _ps_range_to_hover(self, start_ps: int, end_ps: int) -> HoverSelection:
-        events = list(self.ed[start_ps:end_ps])
-        if len(events) == 1:
-            return self._make_hover(event=events[0])
-        if events:
+        it = self.ed[start_ps:end_ps]
+        first_event = next(it, None)
+        second_event = next(it, None)
+        if second_event:
             return self._make_hover(time_range=(start_ps, end_ps))
+        if first_event:
+            return self._make_hover(event=first_event)
         return HoverSelection()
 
     def _ps_range_to_selection(self, start_ps: int, end_ps: int) -> Selection:

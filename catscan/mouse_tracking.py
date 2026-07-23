@@ -15,8 +15,6 @@ def enable_mouse_hover_tracking(screen: urwid.BaseScreen) -> bool:
     if not hasattr(screen, "write"):
         return False
 
-    screen.write(XTERM_ENABLE_ALL_MOTION)
-
     if getattr(screen, "_catscan_hover_tracking_wrapped", False):
         return True
 

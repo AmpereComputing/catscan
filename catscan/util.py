@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from re import Pattern
+from typing import Any
 
 from urwid.str_util import calc_width
 
@@ -32,6 +33,55 @@ def glob_to_pattern(glob_string: str) -> str:
 
 def hex_args_to_re(hex_args: Iterable[str]) -> Pattern:
     return re.compile("^((" + ")|(".join(hex_args) + "))$")
+
+
+def format_hex_arg_values(display_data: Mapping[str, Any], hexargs_re: Pattern[str]) -> dict[str, Any]:
+    def format_value(name: str, value: Any) -> Any:
+        if not hexargs_re.match(name):
+            return value
+        if isinstance(value, str):
+            return hex(int(value, base=0))
+        return hex(value)
+
+    return {name: format_value(name, value) for name, value in display_data.items()}
+
+
+def strip_common_event_prefix(to_strip: str, event_name: str) -> str:
+    def prefix(s: str) -> str:
+        return ".".join(s.split(".")[:-1])
+
+    if prefix(to_strip) == prefix(event_name):
+        return to_strip.split(".")[-1]
+    return to_strip
+
+
+def format_event_data(
+    display_data: Mapping[str, Any],
+    event_name: str,
+    hexargs_re: Pattern[str],
+    sort_keys: bool,
+) -> dict[str, Any]:
+    return {
+        display_name: value
+        for display_name, value, _original_name in format_event_data_items(
+            display_data,
+            event_name,
+            hexargs_re,
+            sort_keys,
+        )
+    }
+
+
+def format_event_data_items(
+    display_data: Mapping[str, Any],
+    event_name: str,
+    hexargs_re: Pattern[str],
+    sort_keys: bool,
+) -> list[tuple[str, Any, str]]:
+    formatted_data = format_hex_arg_values(display_data, hexargs_re)
+    if sort_keys:
+        formatted_data = dict(sorted(formatted_data.items()))
+    return [(strip_common_event_prefix(name, event_name), value, name) for name, value in formatted_data.items()]
 
 
 def str_width(s: str) -> int:

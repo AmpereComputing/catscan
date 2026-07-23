@@ -9,7 +9,7 @@ import urwid
 
 from catscan.data import EventStreamData
 from catscan.state import CatscanState
-from catscan.util import even_odd, hex_args_to_re
+from catscan.util import even_odd, format_event_data_items, format_hex_arg_values, hex_args_to_re
 from catscan.widgets.button import ReleaseButton, ReleaseCheckBox, ReleaseUnpaddedButton
 
 
@@ -259,18 +259,6 @@ class EventDetail(urwid.WidgetWrap):
 
         super().__init__(self.scrollable)
 
-    def map_hex_args(self, display_data: dict[str, Any]) -> dict[str, Any]:
-        def format_as_hex(item: Any) -> Any:
-            name, value = item
-            if self.hexargs_re.match(name):
-                if isinstance(value, str):
-                    return name, hex(int(value, base=0))
-                return name, hex(value)
-
-            return item
-
-        return dict(map(format_as_hex, display_data.items()))
-
     def _event_data_dictionary(self) -> dict[str, tuple[str, str | None]]:
         """
         Return a dictionary of the selected event's data items, with truncated
@@ -278,28 +266,13 @@ class EventDetail(urwid.WidgetWrap):
         """
         event = self.state.selection.event
 
-        def strip_prefix(to_strip: str, to_compare: str) -> str:
-            # Strip a common prefix from to_strip if it shares a prefix with
-            # to_compare
-            def prefix(s: str) -> str:
-                return ".".join(s.split(".")[:-1])
-
-            if prefix(to_strip) == prefix(to_compare):
-                # remove duplicate prefixes (i.e. those that the data items
-                # share with their parent event)
-                return to_strip.split(".")[-1]
-            return to_strip
-
-        # Modify (a copy of) the event data items as the user has requested
-        display_data = self.map_hex_args(event.data)
-        if self.state.sort_event_keys:
-            display_data = dict(sorted(display_data.items()))
+        display_data = format_event_data_items(event.data, event.name, self.hexargs_re, self.state.sort_event_keys)
 
         cycles = round(event.time // self.state.ps_per_cycle)
         data = [
             ("abbrev", (event.abbrev, None)),
             ("time", (f"{event.time:,} ps / {cycles:,} cyc", None)),
-        ] + [(strip_prefix(name, event.name), (value, name)) for name, value in display_data.items()]
+        ] + [(name, (value, original_name)) for name, value, original_name in display_data]
 
         return dict(data)
 
@@ -317,7 +290,7 @@ class EventDetail(urwid.WidgetWrap):
         if "txid" in event.data:
             txid = event.data["txid"]
             if txid in self.stream_data.transactions:
-                data = self.map_hex_args(self.stream_data.transactions[txid].data)
+                data = format_hex_arg_values(self.stream_data.transactions[txid].data, self.hexargs_re)
                 if self.state.sort_event_keys:
                     data = dict(sorted(data.items()))
 
