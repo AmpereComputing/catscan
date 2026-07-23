@@ -21,6 +21,7 @@ from catscan.colors import palette
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 from catscan.state import HoverTarget
+from catscan.user_input import ACTIONS, action_mouseevents, is_mouse_hover_event, translate_mouseevent
 from catscan.widgets.event_sidebar import EventDetailDataText
 from catscan.widgets.hover_popup import HoverPopup
 
@@ -338,6 +339,18 @@ class TestMain(CatscanDataTest):
         top.mouse_event((120, 40), "mouse release", 0, 0, 0, True)
 
         self.assertEqual(("mouse release", 1), dispatched[-1])
+
+    def test_hover_mouse_action_translates_motion_forms(self):
+        self.assertEqual(("mouse release", 1), translate_mouseevent("left_click"))
+        self.assertEqual(list(translate_mouseevent("hover")), action_mouseevents[ACTIONS.HOVER])
+        self.assertIn(("mouse drag", 0), action_mouseevents[ACTIONS.HOVER])
+        self.assertIn(("mouse press", 0), action_mouseevents[ACTIONS.HOVER])
+        self.assertIn(("mouse drag", 4), action_mouseevents[ACTIONS.HOVER])
+        self.assertIn(("shift mouse drag", 4), action_mouseevents[ACTIONS.HOVER])
+
+        self.assertTrue(is_mouse_hover_event("mouse drag", 0))
+        self.assertTrue(is_mouse_hover_event("shift mouse drag", 4))
+        self.assertFalse(is_mouse_hover_event("mouse release", 0))
 
     def test_hover_event_outside_event_view_clears_popup(self):
         top = self.loaded_top()

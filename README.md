@@ -159,6 +159,7 @@ scrolled, and translated:
 Mouse interaction        | Description
 ------------------------ | -----------
 left click + drag        | pan all event rows up/down/right/left
+hover                    | show event data popups
 wheel up/down            | zoom in/out (time-wise)
 `CTRL` + wheel up/down   | scroll up/down through event rows
 `SHIFT` + wheel up/down  | translate event rows right/left

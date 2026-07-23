@@ -52,6 +52,7 @@ class ACTIONS(StrEnum):
     ZOOM_FIT_FOCUSED = "Zoom focused row so all events fit on the screen"
     QUIT = "Quit catscan"
     PAN = "Drag movement"
+    HOVER = "Show hover popup for event content under the cursor"
     SEARCH = "Begin searching"
     COMMAND = "Begin entering a command"
     HELP = "Display this help output"
@@ -134,6 +135,7 @@ action_keypresses = {
 # * Right-click/doubleclick/drag  : "(shift|ctrl|meta)? right_(click|doubleclick|drag)"
 # * Scroll-up                     : "(shift|ctrl|meta)? scroll_wheel_up"
 # * Scroll-down                   : "(shift|ctrl|meta)? scroll_wheel_down"
+# * Hover                         : "hover"
 action_mouseevents_pretranslated = {
     ACTIONS.EVENT_ROW_SELECT_EVENT: ("left_click",),
     ACTIONS.EVENT_ROW_EXTEND_SELECTION: ("shift left_click", "meta left_click"),
@@ -142,19 +144,34 @@ action_mouseevents_pretranslated = {
     ACTIONS.TRANSLATE_RIGHT: ("shift scroll_wheel_up", "meta scroll_wheel_up"),
     ACTIONS.TRANSLATE_LEFT: ("shift scroll_wheel_down", "meta scroll_wheel_down"),
     ACTIONS.PAN: ("left_drag",),
+    ACTIONS.HOVER: ("hover",),
     ACTIONS.ZOOM_IN: ("ctrl scroll_wheel_up",),
     ACTIONS.ZOOM_OUT: ("ctrl scroll_wheel_down",),
 }
 
 
+type MouseEvent = tuple[str, int]
+type MouseEventTranslation = MouseEvent | tuple[MouseEvent, ...]
+
+
 # Map human-readable mouse events to urwid versions, which expects:
 # tuple("<optional keypress> mouse <action>", <mouse button number>)
-def translate_mouseevent(readable_name: str) -> tuple[str, int]:
+def translate_mouseevent(readable_name: str) -> MouseEventTranslation:
     try:
         keypress, mouse_button = readable_name.split(" ")
     except ValueError:
         keypress = ""
         mouse_button = readable_name
+
+    if mouse_button == "hover":
+        # Terminal mouse modes report no-button motion using different urwid
+        # event/button pairs, so one logical hover action maps to all forms.
+        keypresses = (keypress,) if keypress else ("", "shift", "ctrl", "meta")
+        return tuple(
+            (f"{hover_keypress} mouse {action}".lstrip(), button)
+            for hover_keypress in keypresses
+            for action, button in (("drag", 0), ("press", 0), ("drag", 4))
+        )
 
     if "drag" in mouse_button:
         action = "drag"
@@ -180,12 +197,20 @@ def translate_mouseevent(readable_name: str) -> tuple[str, int]:
     )
 
 
+def translate_mouseevents(readable_name: str) -> tuple[MouseEvent, ...]:
+    translated = translate_mouseevent(readable_name)
+    if isinstance(translated[0], str):
+        return (translated,)
+    return translated
+
+
 # Translate the user-friendly ("pre-translated") versions of the mouse events
 # to those that urwid understands. action_mouseevents is the dictionary that
 # will be used directly by the Widgets themselves to detect whether a
 # mouse/keypress event should trigger an action.
 action_mouseevents = {
-    action: list(map(translate_mouseevent, events)) for action, events in action_mouseevents_pretranslated.items()
+    action: [mouseevent for event in events for mouseevent in translate_mouseevents(event)]
+    for action, events in action_mouseevents_pretranslated.items()
 }
 
 
@@ -197,6 +222,4 @@ def is_mouse_hover_event(event: str, button: int) -> bool:
     reports xterm button code 35 as "mouse drag" with button 4, which overlaps
     with scroll-wheel numbering but has a different action.
     """
-    return (button == 0 and event.endswith(("mouse drag", "mouse press"))) or (
-        button == 4 and event.endswith("mouse drag")
-    )
+    return (event, button) in action_mouseevents[ACTIONS.HOVER]
