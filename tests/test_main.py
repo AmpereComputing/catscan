@@ -22,7 +22,7 @@ from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 from catscan.state import HoverTarget
 from catscan.widgets.event_sidebar import EventDetailDataText
-from catscan.widgets.top import HoverPopup
+from catscan.widgets.hover_popup import HoverPopup
 
 TOTAL_EVENTS = 20
 PS_PER_CYCLE = 100
