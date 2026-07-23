@@ -203,6 +203,15 @@ class TestMain(CatscanDataTest):
     def press_key(self, top, key):
         return top.keypress(self.screen.get_cols_rows(), key)
 
+    def move_mouse_to_cell(self, top, cell: tuple[int, int]):
+        col, row = cell
+        frame_mouse_event = top.frame.mouse_event
+        top.frame.mouse_event = lambda size, event, button, col, row, focus: True
+        try:
+            top.mouse_event((120, 40), "mouse drag", 4, col, row, True)
+        finally:
+            top.frame.mouse_event = frame_mouse_event
+
     def event_data(self):
         if self.__class__.loaded_event_data is None:
             self.__class__.loaded_event_data = self.load_event_data()
@@ -308,13 +317,13 @@ class TestMain(CatscanDataTest):
         top._invalidate = lambda: invalidations.append(True)
 
         hover = HoverTarget("event_0", event=self.first_event("event_0"), view="main.resource")
-        top._current_mouse_cell = (20, 4)
+        self.move_mouse_to_cell(top, (20, 4))
 
         self.assertTrue(top.on_hover(hover))
         self.assertFalse(top.on_hover(hover))
         self.assertEqual(1, len(invalidations))
 
-        top._current_mouse_cell = (21, 4)
+        self.move_mouse_to_cell(top, (21, 4))
         self.assertTrue(top.on_hover(hover))
         self.assertEqual(2, len(invalidations))
 
@@ -355,7 +364,7 @@ class TestMain(CatscanDataTest):
 
     def test_hover_event_outside_event_view_clears_popup(self):
         top = self.loaded_top()
-        top._current_mouse_cell = (20, 4)
+        self.move_mouse_to_cell(top, (20, 4))
         event = self.first_event("event_0")
         top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
         top.frame.mouse_event = lambda size, event, button, col, row, focus: False
@@ -366,7 +375,7 @@ class TestMain(CatscanDataTest):
 
     def test_hover_command_disables_single_event_hover(self):
         top = self.loaded_top()
-        top._current_mouse_cell = (20, 4)
+        self.move_mouse_to_cell(top, (20, 4))
         event = self.first_event("event_0")
 
         top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
@@ -388,7 +397,7 @@ class TestMain(CatscanDataTest):
 
     def test_hover_command_disables_multiple_event_hover(self):
         top = self.loaded_top()
-        top._current_mouse_cell = (20, 4)
+        self.move_mouse_to_cell(top, (20, 4))
 
         self.assertTrue(top.command("hover multiple=no"))
         self.assertTrue(top.single_event_hover_enabled)
@@ -419,7 +428,7 @@ class TestMain(CatscanDataTest):
 
     def test_hover_popup_single_event_contains_data(self):
         top = self.loaded_top()
-        top._current_mouse_cell = (20, 4)
+        self.move_mouse_to_cell(top, (20, 4))
         event = self.first_event("event_0")
 
         top.on_hover(HoverTarget("event_0", event=event, view="main.resource"))
@@ -487,7 +496,7 @@ class TestMain(CatscanDataTest):
 
     def test_hover_popup_range_contains_histogram(self):
         top = self.loaded_top()
-        top._current_mouse_cell = (20, 4)
+        self.move_mouse_to_cell(top, (20, 4))
 
         top.on_hover(HoverTarget("event_0", time_range=(0, 2 * PS_PER_CYCLE), view="main.resource"))
         canvas = top.render((120, 40), True)
@@ -511,7 +520,7 @@ class TestMain(CatscanDataTest):
         hover_event = self.first_event("event_1")
 
         top.make_selection(selected_event)
-        top._current_mouse_cell = (20, 4)
+        self.move_mouse_to_cell(top, (20, 4))
         top.on_hover(HoverTarget("event_1", event=hover_event, view="main.resource"))
         canvas = top.render((120, 40), True)
         text = self.canvas_text(canvas.text)

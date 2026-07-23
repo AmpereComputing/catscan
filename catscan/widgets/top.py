@@ -119,14 +119,6 @@ class Top(urwid.widget.Widget):
         self.hover_popup.key = key
 
     @property
-    def _current_mouse_cell(self) -> tuple[int, int] | None:
-        return self.hover_popup.current_mouse_cell
-
-    @_current_mouse_cell.setter
-    def _current_mouse_cell(self, cell: tuple[int, int] | None) -> None:
-        self.hover_popup.current_mouse_cell = cell
-
-    @property
     def single_event_hover_enabled(self) -> bool:
         return self.hover_popup.single_event_enabled
 
@@ -1516,7 +1508,7 @@ class Top(urwid.widget.Widget):
         row: int,
         focus: bool,
     ) -> bool | None:
-        self._current_mouse_cell = (col, row)
+        self.hover_popup.mouse_event(size, event, button, col, row, focus)
         keyless_event = re.sub(r"^.*?mouse", "mouse", event)
         hover_event = is_mouse_hover_event(event, button)
         original_event = event

@@ -137,6 +137,17 @@ class HoverPopupController:
     def update_stream_data(self, stream_data: EventStreamData) -> None:
         self.stream_data = stream_data
 
+    def mouse_event(
+        self,
+        size: tuple[()] | tuple[int] | tuple[int, int],
+        event: str,
+        button: int,
+        col: int,
+        row: int,
+        focus: bool,
+    ) -> None:
+        self.current_mouse_cell = (col, row)
+
     def data_view_for_hover(self, hover: HoverTarget) -> Any:
         return self.stream_data.transaction_events() if hover.within_transaction() else self.stream_data.events()
 
