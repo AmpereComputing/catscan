@@ -695,7 +695,7 @@ class Top(urwid.widget.Widget):
         return self.update_state(new_state)
 
     def clear_selection(self) -> bool:
-        self.frame.set_focus("body")
+        self.frame.focus_position = "body"
         new_state = self.state.copy_with(selection=Selection())
         return self.update_state(new_state)
 
@@ -876,7 +876,7 @@ class Top(urwid.widget.Widget):
         views = views or self.view_rows.focused_views()
         data_view = self._get_data_view_from_views(views)
 
-        self.frame.set_focus("body")
+        self.frame.focus_position = "body"
 
         # If the user searched for the empty string, clear the search
         if isinstance(search_term, str) and len(search_term.strip()) == 0:
@@ -1120,7 +1120,7 @@ class Top(urwid.widget.Widget):
         raise urwid.ExitMainLoop()
 
     def command(self, command_and_args: str) -> bool:
-        self.frame.set_focus("body")
+        self.frame.focus_position = "body"
 
         try:
             command, posargs, kwargs = parse_command_args(command_and_args)
@@ -1475,14 +1475,14 @@ class Top(urwid.widget.Widget):
 
         if ret in action_keypresses[ACTIONS.SEARCH]:
             self.status_bar.enter_search()
-            self.frame.set_focus("footer")
+            self.frame.focus_position = "footer"
             ret = None
         elif ret in action_keypresses[ACTIONS.COMMAND]:
             self.status_bar.enter_command()
-            self.frame.set_focus("footer")
+            self.frame.focus_position = "footer"
             ret = None
-        elif self.frame.get_focus() == "footer" and ret in action_keypresses[ACTIONS.STATUS_BAR_CANCEL]:
-            self.frame.set_focus("body")
+        elif self.frame.focus_position == "footer" and ret in action_keypresses[ACTIONS.STATUS_BAR_CANCEL]:
+            self.frame.focus_position = "body"
             if self.status_bar.cancel_operation():
                 ret = None
         elif self.state.selection and ret in action_keypresses[ACTIONS.EVENT_DETAIL_CLOSE]:

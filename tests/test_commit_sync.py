@@ -126,10 +126,12 @@ class TestCommitSync(unittest.TestCase):
         self.first_syncer.stop()
         self.wait_for_stop()
 
-        # This message should be silently dropped
-        self.second_syncer.send(
-            CommitSyncState(inum=49, cycles_per_char=Fraction(32, 1), expand_rows=True, chars_rel_to_start=109)
-        )
+        # This message should be dropped after logging the stopped sync.
+        with self.assertLogs(level="WARNING") as logs:
+            self.second_syncer.send(
+                CommitSyncState(inum=49, cycles_per_char=Fraction(32, 1), expand_rows=True, chars_rel_to_start=109)
+            )
+        self.assertIn("Dropping to-send commit sync message", logs.output[0])
 
         self.assertTrue(self.first_stopped)
         self.assertTrue(self.second_stopped)
