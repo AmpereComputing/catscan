@@ -143,3 +143,10 @@ class TestExpandedLazyTransactionView(CatscanDataTest):
         canvas = view.render((134, 73), focus=True)
 
         self.assertEqual((134, 73), (canvas.cols(), canvas.rows()))
+
+    def test_lazy_expanded_rows_scroll_bottom_uses_logical_focus_position(self):
+        view = TransactionView("transaction", self.state(), self.esd, *(lambda *args: False for _ in range(8)))
+
+        self.assertIsNone(view.keypress((134, 73), "G"))
+
+        self.assertEqual(self.TRANSACTION_ROWS - 1, view.list_box.focus_position)

@@ -570,7 +570,7 @@ class EventView(urwid.WidgetWrap, View):
         return True
 
     def _shift_view(self, size: tuple[int, int], row_translation: int) -> None:
-        last_row = len(self.list_box) - 1
+        last_row = len(self.list_walker) - 1
         position = min(
             max(0, self.list_box.focus_position + row_translation),
             last_row,
@@ -670,7 +670,7 @@ class EventView(urwid.WidgetWrap, View):
             self._shift_view(size, -self.list_box.focus_position)
             handled = True
         elif key in action_keypresses[ACTIONS.SCROLL_BOTTOM]:
-            self._shift_view(size, len(self.list_box) - 1)
+            self._shift_view(size, len(self.list_walker) - 1)
             handled = True
         elif key in action_keypresses[ACTIONS.TOP_FOCUS]:
             self.list_box.set_focus_valign("top")
