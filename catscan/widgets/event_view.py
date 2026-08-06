@@ -290,9 +290,9 @@ class LazyEventListWalker(urwid.ListWalker):
 
     def __len__(self) -> int:
         if self._total_rows is None:
-            expand, all_rows = self._all_rows_func()
+            _, all_rows = self._all_rows_func()
             group_rows = len({ed.group for ed in all_rows}) if self._has_groups else 0
-            event_rows = sum(max(1, ed.max_events_per_time()) for ed in all_rows) if expand else len(all_rows)
+            event_rows = len(all_rows)
             self._total_rows = event_rows + group_rows
 
         return self._total_rows
@@ -311,6 +311,9 @@ class LazyEventListBox(urwid.ListBox):
         self._has_groups = has_groups
         self._last_scrollpos = (None, None)
         super().__init__(body)
+
+    def reset_scrollpos(self) -> None:
+        self._last_scrollpos = (None, None)
 
     def _calculate_scrollpos(self, all_rows: EventStreamDataView, start: int, stop: int) -> int:
         group_rows = 0
@@ -345,9 +348,9 @@ class LazyEventListBox(urwid.ListBox):
 
         last_pos, last_offset = self._last_scrollpos
         if last_pos is None or (pos < last_pos and abs(pos - last_pos) > pos):
-            offset = self._calculate_scrollpos(all_rows, 0, pos + 1)
+            offset = self._calculate_scrollpos(all_rows, 0, pos)
         elif last_pos < pos:
-            offset = last_offset + self._calculate_scrollpos(all_rows, last_pos + 1, pos + 1)
+            offset = last_offset + self._calculate_scrollpos(all_rows, last_pos, pos)
         elif last_pos > pos:
             offset = last_offset - self._calculate_scrollpos(all_rows, pos, last_pos)
         else:
@@ -366,7 +369,11 @@ class LazyEventListBox(urwid.ListBox):
         if size is not None:
             self._rendered_size = size
 
-        return len(self.body)
+        expand, all_rows = self._all_rows_func()
+        if not expand:
+            return len(self.body)
+
+        return self._calculate_scrollpos(all_rows, 0, len(all_rows))
 
     @property
     def __len__(self) -> Callable[[], int]:
@@ -500,6 +507,8 @@ class EventView(urwid.WidgetWrap, View):
     def update_rows(self):
         self._total_rows = None
         self._construct_list_box(self.total_rows())
+        if isinstance(self.list_box, LazyEventListBox):
+            self.list_box.reset_scrollpos()
         self.list_walker.clear()
         if not isinstance(self.list_walker, LazyEventListWalker):
             self.add_rows()
@@ -518,6 +527,8 @@ class EventView(urwid.WidgetWrap, View):
 
         if isinstance(self.list_walker, LazyEventListWalker):
             self.list_walker.update_state(self.state)
+            if isinstance(self.list_box, LazyEventListBox):
+                self.list_box.reset_scrollpos()
         else:
             for row in self.list_walker:
                 row.update_state(self.state)
@@ -559,7 +570,7 @@ class EventView(urwid.WidgetWrap, View):
         return True
 
     def _shift_view(self, size: tuple[int, int], row_translation: int) -> None:
-        last_row = len(self.list_box) - 1
+        last_row = len(self.list_walker) - 1
         position = min(
             max(0, self.list_box.focus_position + row_translation),
             last_row,
@@ -659,7 +670,7 @@ class EventView(urwid.WidgetWrap, View):
             self._shift_view(size, -self.list_box.focus_position)
             handled = True
         elif key in action_keypresses[ACTIONS.SCROLL_BOTTOM]:
-            self._shift_view(size, len(self.list_box) - 1)
+            self._shift_view(size, len(self.list_walker) - 1)
             handled = True
         elif key in action_keypresses[ACTIONS.TOP_FOCUS]:
             self.list_box.set_focus_valign("top")
