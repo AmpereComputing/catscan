@@ -1016,19 +1016,19 @@ class Top(urwid.widget.Widget):
                 view.start_commit_sync(self.commit_syncer, self.commit_sync_event, self.commit_sync_data_name)
             )
 
+        new_stream_data = self.stream_data
         if pushout_events:
-            new_stream_data = self.stream_data
             self.saved_stream_data = self.stream_data
             new_stream_data = self.stream_data.copy_with_events(
                 pushout_events,
                 insert_after=self.commit_sync_event,
             )
 
-            self.update_stream_data(
-                new_stream_data,
-                external_column_width=self.commit_syncer.other_column_header_width,
-                zoom_to_extents=False,
-            )
+        self.update_stream_data(
+            new_stream_data,
+            external_column_width=self.commit_syncer.other_column_header_width,
+            zoom_to_extents=False,
+        )
 
         self.eval_commands(self.init_sync_commands)
 
