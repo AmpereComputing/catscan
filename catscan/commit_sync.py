@@ -6,16 +6,17 @@ import atexit
 import json
 import logging
 import os
+import time
 from collections.abc import Callable
 from contextlib import suppress
+from dataclasses import dataclass, field
 from fractions import Fraction
 from threading import Thread
-from typing import NamedTuple
+from typing import Final, Literal, NamedTuple
 
 import urwid
-from perf_streams.event_stream import Event
 
-from catscan.data import CatscanEvent, EventData
+from catscan.data import CatscanEvent, DataView, EventData
 
 JsonScalar = str | int | float | bool | None
 JsonValue = JsonScalar | list["JsonValue"] | dict[str, "JsonValue"]
@@ -31,14 +32,14 @@ def build_commit_index(event_row: EventData, data_name: str) -> dict[int, int]:
 
 def build_pushout_index(commit_index: dict[int, int], ps_per_cycle: int) -> dict[int, int]:
     pushout_index = {}
-    for inum, time in commit_index.items():
-        if inum - 1 in commit_index:
-            pushout_index[inum] = (time - commit_index[inum - 1]) // ps_per_cycle
+    for sync_index, commit_time in commit_index.items():
+        if sync_index - 1 in commit_index:
+            pushout_index[sync_index] = (commit_time - commit_index[sync_index - 1]) // ps_per_cycle
     return pushout_index
 
 
 # This "constant" defines the bounds used to "debounce" changes in cumulative
-# commit pushout. The logic in CommitSyncer.generate_commit_pushout_events
+# commit pushout. The logic in CommitSyncer.compute_commit_pushout_movements
 # below keeps track of the cumulative commit pushout, and tracks it with a
 # value that is the "debounced" cumulative commit pushout. Whenever the real
 # cumulative pushout becomes farther than CUMULATIVE_PUSHOUT_BOUNDS cycles from
@@ -52,27 +53,65 @@ CUMULATIVE_PUSHOUT_BOUNDS = 16
 # Refresh rate (seconds) for syncing, allows for dropping older updates to get the most
 # recent, reducing rubberbanding
 REFRESH_RATE = 1 / 60  # 60Hz
+COMMIT_SYNC_ANCHOR_FIELDS: Final = ("sync_index", "chars_rel_to_start", "movement_alignment")
 
 
 class PushoutEvent(CatscanEvent):
-    def __init__(self, name: str, _id: int, time: int, txid: int, inum: int, my_pushout: int, other_pushout: int):
+    def __init__(
+        self,
+        name: str,
+        _id: int,
+        time: int,
+        txid: int,
+        commit_data_name: str,
+        sync_index: int,
+        my_pushout: int,
+        other_pushout: int,
+    ) -> None:
         self.id = _id
         self.time = time
         self.name = name
         self.data = {
             "txid": txid,
-            "inum": inum,
+            commit_data_name: sync_index,
             "pushout": my_pushout,
             "other_pushout": other_pushout,
             "excess_pushout": my_pushout - other_pushout,
         }
 
 
+@dataclass
+class CommitPushoutMovements:
+    excess_pushout: dict[int, int]
+    cumulative_pushout_movement: dict[int, int]
+
+
 class CommitSyncState(NamedTuple):
-    inum: int  # The inum whose position we are syncing on
-    cycles_per_char: Fraction  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
-    expand_rows: bool  # Whether the rows of events should be displayed in their 'expanded' form
-    chars_rel_to_start: int  # The number of characters right-of-center the referenced inum is
+    sync_index: int | None = None  # The sync_index whose position we are syncing on, if one is available
+    cycles_per_char: Fraction | None = (
+        None  # The number of cycles summarized per character in the sender's current view (directly from its CatscanState)
+    )
+    expand_rows: bool | None = None  # Whether the rows of events should be displayed in their 'expanded' form
+    chars_rel_to_start: int | None = None  # The number of characters right-of-center the referenced sync_index is
+    movement_alignment: Literal["before", "after"] | None = None
+
+    def merge(self, delta: "CommitSyncState") -> "CommitSyncState":
+        """Return this state overlaid with the non-empty fields from delta."""
+        return self._replace(**{name: value for name, value in delta._asdict().items() if value is not None})
+
+    def has_fields(self) -> bool:
+        """Return whether this state carries any explicit sync fields."""
+        return any(value is not None for value in self)
+
+
+@dataclass
+class CommitSyncPeer:
+    suffix: str
+    init_filename: str
+    commit_index: dict[int, int] = field(default_factory=dict)
+    pushout_index: dict[int, int] = field(default_factory=dict)
+    view_mode: DataView = DataView.RESOURCE
+    column_header_width: int = 0
 
 
 class CommitSyncStateJSONEncoder(json.JSONEncoder):
@@ -83,18 +122,20 @@ class CommitSyncStateJSONEncoder(json.JSONEncoder):
 
     def encode(self, obj: CommitSyncState | JsonValue) -> str:
         if isinstance(obj, CommitSyncState):
-            return super().encode(obj._asdict())
+            return super().encode({key: value for key, value in obj._asdict().items() if value is not None})
         return super().encode(obj)
 
 
 class CommitSyncStateJSONDecoder(json.JSONDecoder):
+    def _decode_value(self, name: str, value: JsonValue) -> JsonValue | Fraction:
+        if name == "cycles_per_char" and value is not None:
+            return Fraction(value["numerator"], value["denominator"])
+        return value
+
     def decode(self, json_string: str) -> CommitSyncState:
         data = super().decode(json_string)
         return CommitSyncState(
-            inum=data["inum"],
-            cycles_per_char=Fraction(data["cycles_per_char"]["numerator"], data["cycles_per_char"]["denominator"]),
-            expand_rows=data["expand_rows"],
-            chars_rel_to_start=data["chars_rel_to_start"],
+            **{name: self._decode_value(name, value) for name, value in data.items() if name in CommitSyncState._fields}
         )
 
 
@@ -106,7 +147,9 @@ class CommitSyncer:
         sync_stopped_callback: Callable[[], None],
         sync_callback: Callable[[CommitSyncState], None],
         column_header_width: int = 0,
+        commit_index: dict[int, int] | None = None,
         pushout_index: dict[int, int] | None = None,
+        view_mode: DataView = DataView.RESOURCE,
     ) -> None:
         self.fifo_basename = fifo_basename
         self.sync_started_callback = sync_started_callback
@@ -120,14 +163,21 @@ class CommitSyncer:
         self.is_primary = self.make_fifo(self.fifo1_name)
         self.make_fifo(self.fifo2_name)
 
-        self.my_suffix = "primary" if self.is_primary else "secondary"
-        self.other_suffix = "secondary" if self.is_primary else "primary"
-        self.my_init_filename = os.path.abspath(f"{fifo_basename}.init.{self.my_suffix}")
-        self.other_init_filename = os.path.abspath(f"{fifo_basename}.init.{self.other_suffix}")
-        self.my_pushout_index = pushout_index if pushout_index else {}
-        self.my_column_header_width = column_header_width
-        self.other_pushout_index = {}
-        self.other_column_header_width = 0
+        my_suffix = "primary" if self.is_primary else "secondary"
+        other_suffix = "secondary" if self.is_primary else "primary"
+        self.my = CommitSyncPeer(
+            suffix=my_suffix,
+            init_filename=os.path.abspath(f"{fifo_basename}.init.{my_suffix}"),
+            commit_index=commit_index or {},
+            pushout_index=pushout_index or {},
+            view_mode=view_mode,
+            column_header_width=column_header_width,
+        )
+        self.other = CommitSyncPeer(
+            suffix=other_suffix,
+            init_filename=os.path.abspath(f"{fifo_basename}.init.{other_suffix}"),
+        )
+        self.failure_message = None
 
         self.state_encoder = CommitSyncStateJSONEncoder()
         self.state_decoder = CommitSyncStateJSONDecoder()
@@ -137,6 +187,8 @@ class CommitSyncer:
         self.initialized = False
         self.stopped = False
         self.initialization_thread = None
+        self._last_sent_sync_state = None
+        self._last_sent_anchor_state = None
 
         # Event-loop related attributes
         self.main_loop = None
@@ -213,11 +265,13 @@ class CommitSyncer:
         Note: Should only be called inside the thread saved as self.initialization_thread.
         """
 
-        atexit.register(self.cleanup_file, self.my_init_filename)
-        with open(self.my_init_filename, "w") as init_file:
+        atexit.register(self.cleanup_file, self.my.init_filename)
+        with open(self.my.init_filename, "w") as init_file:
             to_json = {
-                "column_header_width": self.my_column_header_width,
-                "pushout_index": self.my_pushout_index,
+                "column_header_width": self.my.column_header_width,
+                "commit_index": self.my.commit_index,
+                "pushout_index": self.my.pushout_index,
+                "view_mode": self.my.view_mode,
             }
             json.dump(to_json, init_file)
             init_file.flush()
@@ -232,10 +286,26 @@ class CommitSyncer:
             self.incoming = open(self.fifo1_name)
             self.outgoing = open(self.fifo2_name, "w")
 
-        with open(self.other_init_filename) as init_file:
-            from_json = json.load(init_file)
-            self.other_column_header_width = from_json["column_header_width"]
-            self.other_pushout_index = {int(inum): pushout for inum, pushout in from_json["pushout_index"].items()}
+        while not self.stopped:
+            try:
+                with open(self.other.init_filename) as init_file:
+                    from_json = json.load(init_file)
+                    self.other.column_header_width = from_json["column_header_width"]
+                    self.other.commit_index = {
+                        int(sync_index): time for sync_index, time in from_json.get("commit_index", {}).items()
+                    }
+                    self.other.pushout_index = {
+                        int(sync_index): pushout for sync_index, pushout in from_json["pushout_index"].items()
+                    }
+                    if "view_mode" in from_json:
+                        self.other.view_mode = DataView(from_json["view_mode"])
+                    else:
+                        self.other.view_mode = DataView.RESOURCE
+                break
+            except FileNotFoundError:
+                time.sleep(0.05)
+        else:
+            return
 
         # Signify that initialization is complete to any observers waiting on
         # that
@@ -251,76 +321,67 @@ class CommitSyncer:
                 logging.info("Stopping commit sync. Other end of FIFO presumed closed.")
                 self.stop()
 
-    def generate_commit_pushout_events(
-        self,
-        event_row: EventData,
-        commit_sync_data_name: str,
-        next_event_id: int,
-        ps_per_cycle: int,
-    ) -> list[Event]:
-        # Generate a dictionary keyed by inum for each commit which shows
+    def compute_commit_pushout_movements(self) -> CommitPushoutMovements:
+        """Return local pushout movement differences relative to the sync peer."""
+        # Generate a dictionary keyed by sync_index for each commit which shows
         # "real" excess commit pushout. We don't count commit pushout as "real"
         # if it is a single cycle and the previous nonzero pushout was -1
         # cycles, because this likely means the commits are just split across
         # cycles slightly differently.
-        min_inum = max(min(self.my_pushout_index.keys()), min(self.other_pushout_index.keys()))
-        max_inum = min(max(self.my_pushout_index.keys()), max(self.other_pushout_index.keys()))
+        if not self.my.pushout_index or not self.other.pushout_index:
+            return CommitPushoutMovements({}, {})
+
+        min_sync_index = max(min(self.my.pushout_index.keys()), min(self.other.pushout_index.keys()))
+        max_sync_index = min(max(self.my.pushout_index.keys()), max(self.other.pushout_index.keys()))
+        if min_sync_index > max_sync_index:
+            return CommitPushoutMovements({}, {})
 
         excess_pushout = {}
         cumulative_pushout_movement = {}
         last_pushout_difference = 0
         cumulative_pushout = 0
         cumulative_pushout_center = cumulative_pushout
-        for inum in range(min_inum, max_inum + 1):
+        for sync_index in range(min_sync_index, max_sync_index + 1):
             try:
-                diff = self.my_pushout_index[inum] - self.other_pushout_index[inum]
+                diff = self.my.pushout_index[sync_index] - self.other.pushout_index[sync_index]
             except KeyError:
                 continue
 
             if diff > 1 or (diff == 1 and last_pushout_difference != -1):
-                excess_pushout[inum] = diff
+                excess_pushout[sync_index] = diff
             if diff:
                 cumulative_pushout += diff
                 last_pushout_difference = diff
                 if cumulative_pushout < cumulative_pushout_center - CUMULATIVE_PUSHOUT_BOUNDS:
                     cumulative_pushout_center = cumulative_pushout + CUMULATIVE_PUSHOUT_BOUNDS
                 elif cumulative_pushout > cumulative_pushout_center + CUMULATIVE_PUSHOUT_BOUNDS:
-                    cumulative_pushout_movement[inum] = cumulative_pushout - (
+                    cumulative_pushout_movement[sync_index] = cumulative_pushout - (
                         cumulative_pushout_center + CUMULATIVE_PUSHOUT_BOUNDS
                     )
                     cumulative_pushout_center = cumulative_pushout - CUMULATIVE_PUSHOUT_BOUNDS
 
-        pushout_events = []
+        return CommitPushoutMovements(excess_pushout, cumulative_pushout_movement)
 
-        def gen_pushout_events(commit_evt: Event, event_name: str, excess_pushout: int) -> None:
-            nonlocal next_event_id
-            for i in range(-excess_pushout, 0):
-                time = commit_evt.time + i * ps_per_cycle
-                pushout_evt = PushoutEvent(
-                    event_name,
-                    next_event_id,
-                    time,
-                    commit_evt.data["txid"],
-                    commit_evt.data[commit_sync_data_name],
-                    self.my_pushout_index[inum],
-                    self.other_pushout_index[inum],
-                )
-                next_event_id += 1
-                pushout_events.append(pushout_evt)
-
-        group_prefix = event_row.group
-        for commit_evt in event_row[:]:
-            if commit_sync_data_name not in commit_evt.data:
-                continue
-            inum = commit_evt.data[commit_sync_data_name]
-            if inum in excess_pushout:
-                gen_pushout_events(commit_evt, f"{group_prefix}.excess_commit_pushout", excess_pushout[inum])
-            if inum in cumulative_pushout_movement:
-                gen_pushout_events(
-                    commit_evt, f"{group_prefix}.debounced_cumulative_pushout", cumulative_pushout_movement[inum]
-                )
-
-        return pushout_events
+    def create_pushout_event(
+        self,
+        name: str,
+        _id: int,
+        time: int,
+        txid: int,
+        commit_data_name: str,
+        sync_index: int,
+    ) -> PushoutEvent:
+        """Return a synthetic pushout event for the given shared sync index."""
+        return PushoutEvent(
+            name,
+            _id,
+            time,
+            txid,
+            commit_data_name,
+            sync_index,
+            self.my.pushout_index[sync_index],
+            self.other.pushout_index[sync_index],
+        )
 
     def stop(self) -> None:
         if self.stopped:
@@ -334,7 +395,8 @@ class CommitSyncer:
 
         self.cleanup_file(self.fifo1_name)
         self.cleanup_file(self.fifo2_name)
-        self.cleanup_file(self.my_init_filename)
+        if self.initialized or self.failure_message is None:
+            self.cleanup_file(self.my.init_filename)
         if self.outgoing:
             self.outgoing.close()
             self.outgoing = None
@@ -355,16 +417,105 @@ class CommitSyncer:
     def syncing(self) -> bool:
         return bool(self.initialized and not self.stopped and self.outgoing)
 
-    def send(self, sync_state: CommitSyncState) -> None:
+    @property
+    def other_view_mode(self) -> DataView:
+        """Return the peer's primary view mode."""
+        return self.other.view_mode
+
+    @property
+    def other_column_header_width(self) -> int:
+        """Return the peer's configured event-name column width."""
+        return self.other.column_header_width
+
+    def other_has_sync_index(self, sync_index: int) -> bool:
+        """Return whether the peer can synchronize against the given index."""
+        return sync_index in self.other.commit_index or sync_index in self.other.pushout_index
+
+    def first_other_sync_index(self, candidates: list[int]) -> int | None:
+        """Return the first candidate sync index also known by the peer."""
+        for sync_index in candidates:
+            if self.other_has_sync_index(sync_index):
+                return sync_index
+        return None
+
+    def _remember_sent(self, sync_state: CommitSyncState) -> None:
+        self._last_sent_sync_state = sync_state
+        if sync_state.sync_index is not None:
+            self._last_sent_anchor_state = sync_state
+        else:
+            self._last_sent_anchor_state = None
+
+    def _sent_anchor_matches(self, sync_state: CommitSyncState) -> bool:
+        if sync_state.sync_index is None:
+            return True
+        if self._last_sent_anchor_state is None:
+            return False
+        return all(
+            getattr(sync_state, field_name) == getattr(self._last_sent_anchor_state, field_name)
+            for field_name in COMMIT_SYNC_ANCHOR_FIELDS
+        )
+
+    def _delta_sync_state(self, sync_state: CommitSyncState) -> CommitSyncState:
+        previous_sync_state = self._last_sent_sync_state
+        previous_values = previous_sync_state._asdict() if previous_sync_state else {}
+        values = sync_state._asdict()
+        delta_values = {}
+
+        if not self._sent_anchor_matches(sync_state):
+            delta_values.update({field_name: values[field_name] for field_name in COMMIT_SYNC_ANCHOR_FIELDS})
+
+        delta_values.update(
+            {
+                field_name: value
+                for field_name, value in values.items()
+                if field_name not in COMMIT_SYNC_ANCHOR_FIELDS
+                and value is not None
+                and previous_values.get(field_name) != value
+            }
+        )
+
+        return CommitSyncState(**delta_values)
+
+    def _write_sync_state(
+        self, sync_state: CommitSyncState, remembered_sync_state: CommitSyncState | None = None
+    ) -> bool:
+        sync_index_json = self.state_encoder.encode(sync_state)
+        self.outgoing.write(f"{sync_index_json}\n")
+        self.outgoing.flush()
+        self._remember_sent(remembered_sync_state or sync_state)
+        return True
+
+    def send(self, sync_state: CommitSyncState) -> bool:
         if not self.syncing:
             logging.warning(
                 f"Dropping to-send commit sync message {sync_state} because the sync is either not initialized yet or has been closed/stopped."
             )
-            return
+            return False
 
-        inum_json = self.state_encoder.encode(sync_state)
-        self.outgoing.write(f"{inum_json}\n")
-        self.outgoing.flush()
+        return self._write_sync_state(sync_state)
+
+    def send_if_changed(self, sync_state: CommitSyncState) -> bool:
+        """Send only the changed fields from the requested sync state."""
+        if not self.syncing:
+            return self.send(sync_state)
+
+        delta_sync_state = self._delta_sync_state(sync_state)
+        if not delta_sync_state.has_fields():
+            if sync_state.sync_index is None:
+                self._last_sent_anchor_state = None
+            return False
+
+        return self._write_sync_state(delta_sync_state, remembered_sync_state=sync_state)
+
+    def _dispatch_received_sync_state(self, sync_state: CommitSyncState) -> None:
+        self.latest_sync_state = (
+            sync_state if self.latest_sync_state is None else self.latest_sync_state.merge(sync_state)
+        )
+        if self.main_loop is None:
+            self.sync_callback(self.latest_sync_state)
+        else:
+            # Required to wakeup/interrupt main loop
+            os.write(self.notifier, b"u")
 
     def receive(self, sync_state: CommitSyncState) -> None:
         if not self.syncing:
@@ -373,44 +524,46 @@ class CommitSyncer:
             )
             return
 
+        if (
+            self.other.view_mode == DataView.TRANSACTIONS
+            or sync_state.sync_index is None
+            or sync_state.chars_rel_to_start is None
+        ):
+            self._dispatch_received_sync_state(sync_state)
+            return
+
         # Scale the synced horizontal time based on the relative differences in
         # commit pushout to ensure smoother movements around transitions
-        # between the inum being synced against
-        if sync_state.chars_rel_to_start < 0 and sync_state.inum in self.my_pushout_index:
-            scalable_rel_chars = max(sync_state.chars_rel_to_start, -self.other_pushout_index[sync_state.inum])
+        # between the sync_index being synced against
+        if (
+            sync_state.chars_rel_to_start < 0
+            and sync_state.sync_index in self.my.pushout_index
+            and sync_state.sync_index in self.other.pushout_index
+        ):
+            scalable_rel_chars = max(sync_state.chars_rel_to_start, -self.other.pushout_index[sync_state.sync_index])
             rel_chars = sync_state.chars_rel_to_start - scalable_rel_chars
             if scalable_rel_chars:
                 rel_chars += (
                     scalable_rel_chars
-                    * self.my_pushout_index[sync_state.inum]
-                    / self.other_pushout_index[sync_state.inum]
+                    * self.my.pushout_index[sync_state.sync_index]
+                    / self.other.pushout_index[sync_state.sync_index]
                 )
         elif (
             sync_state.chars_rel_to_start > 0
-            and sync_state.inum + 1 in self.my_pushout_index
-            and sync_state.inum + 1 in self.other_pushout_index
+            and sync_state.sync_index + 1 in self.my.pushout_index
+            and sync_state.sync_index + 1 in self.other.pushout_index
         ):
-            scalable_rel_chars = min(sync_state.chars_rel_to_start, self.other_pushout_index[sync_state.inum + 1])
+            scalable_rel_chars = min(sync_state.chars_rel_to_start, self.other.pushout_index[sync_state.sync_index + 1])
             rel_chars = sync_state.chars_rel_to_start - scalable_rel_chars
             if scalable_rel_chars:
                 rel_chars += (
                     scalable_rel_chars
-                    * self.my_pushout_index[sync_state.inum + 1]
-                    / self.other_pushout_index[sync_state.inum + 1]
+                    * self.my.pushout_index[sync_state.sync_index + 1]
+                    / self.other.pushout_index[sync_state.sync_index + 1]
                 )
         else:
             rel_chars = sync_state.chars_rel_to_start
 
-        adjusted_sync_state = CommitSyncState(
-            inum=sync_state.inum,
-            cycles_per_char=sync_state.cycles_per_char,
-            expand_rows=sync_state.expand_rows,
-            chars_rel_to_start=rel_chars,
-        )
+        adjusted_sync_state = sync_state._replace(chars_rel_to_start=rel_chars)
 
-        if self.main_loop is None:
-            self.sync_callback(adjusted_sync_state)
-        else:
-            self.latest_sync_state = adjusted_sync_state
-            # Required to wakeup/interrupt main loop
-            os.write(self.notifier, b"u")
+        self._dispatch_received_sync_state(adjusted_sync_state)

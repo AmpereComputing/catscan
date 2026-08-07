@@ -494,7 +494,7 @@ completable_commands = [
     ),
     CommandDefinition(
         Commands.SYNC_COMMITS,
-        "Synchronize the time axis in the UI to the committed instruction 'inum' of another catscan process if a filename is provided (same command/filename must be executed in other process to sync with). 'stop' stops in-process syncing",
+        "Synchronize commit position with another catscan process if a filename is provided. Resource view syncs the horizontal time axis, transaction view syncs the top visible transaction row, and mixed resource/transaction views synchronize through shared commit anchors. 'stop' stops in-process syncing",
         example="/tmp/sync_commits.nodejs-cluster.14338_31",
         args=(Arg("fifo_basename", mutually_exclusive="action"),),
         kwargs=(Arg.Optional("stop", aliases=["no", "off"], mutually_exclusive="action"),),

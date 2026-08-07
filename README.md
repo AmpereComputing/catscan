@@ -354,6 +354,11 @@ Key sequences/commands                 | Description
 `:sync_commits \<filename prefix\>`    | begin synchronizing the UI via commit events by communicating over UNIX pipes named using \<filename prefix\> (same filename must be supplied by both synchronized processes)
 `:sync_commits stop`                   | stop synchronizing commit events with another process
 
+Resource view synchronization follows the horizontal time axis. Transaction
+view synchronization follows the visible transaction row. Mixed
+resource/transaction view synchronization uses the shared commit anchor for the
+transaction row as a time position in the resource view.
+
 > **Note:** In order to use, instruction commit event and data names must be
 > specified. See `catscan --help` for details.
 

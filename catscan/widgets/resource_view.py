@@ -4,7 +4,9 @@
 from typing import Any
 
 import urwid
+from perf_streams.event_stream import Event
 
+from catscan.commit_sync import CommitSyncer
 from catscan.data import EventData, EventStreamData, EventStreamDataEventView
 from catscan.widgets.event_row import EventRow, EventRowBase, GroupRow
 from catscan.widgets.event_view import EventView
@@ -74,6 +76,15 @@ class ResourceView(EventView):
     def create_group_row(self, group: str, row_index: int, **kwargs: Any) -> GroupRow:
         return GroupRow(group, self.state, row_index, **kwargs)
 
+    def _build_row_positions(self) -> dict[str | int, int]:
+        groups_seen = set()
+        row_positions = {}
+        for row_index, row in enumerate(self.iter_event_rows()):
+            if self._include_groups and row.group not in groups_seen:
+                groups_seen.add(row.group)
+            row_positions[row.key()] = row_index + len(groups_seen)
+        return row_positions
+
     def add_rows(self):
         groups_seen = set()
         for row_index, row in enumerate(self.iter_event_rows()):
@@ -98,14 +109,76 @@ class ResourceView(EventView):
             return max(max_event_name, max_group_name)
         return 1
 
-    def _update_selected_row_name(self, newly_selected_row: str) -> None:
-        groups_seen = set()
-        for row_index, row in enumerate(self.stream_data):
-            if self._include_groups and row.group not in groups_seen:
-                groups_seen.add(row.group)
-            if newly_selected_row == row.name:
-                self.list_walker.set_focus(row_index + len(groups_seen))
-                return
+    def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        """Prepare resource commit sync and return generated pushout rows."""
+        super().start_commit_sync(commit_syncer, commit_event, commit_data_name)
+        if commit_event not in self.stream_data.event_rows:
+            return []
+
+        movements = commit_syncer.compute_commit_pushout_movements()
+        event_row = self.stream_data.event_rows[commit_event]
+        next_event_id = self.stream_data.max_event_id + 1
+        pushout_events: list[Event] = []
+
+        def gen_pushout_events(commit_evt: Event, event_name: str, pushout_movement: int) -> None:
+            nonlocal next_event_id
+            sync_index = commit_evt.data[commit_data_name]
+            for i in range(-pushout_movement, 0):
+                pushout_events.append(
+                    commit_syncer.create_pushout_event(
+                        event_name,
+                        next_event_id,
+                        commit_evt.time + i * self.state.ps_per_cycle,
+                        commit_evt.data["txid"],
+                        commit_data_name,
+                        sync_index,
+                    )
+                )
+                next_event_id += 1
+
+        for commit_evt in event_row[:]:
+            if commit_data_name not in commit_evt.data:
+                continue
+            sync_index = commit_evt.data[commit_data_name]
+            if sync_index in movements.excess_pushout:
+                gen_pushout_events(
+                    commit_evt,
+                    f"{event_row.group}.excess_commit_pushout",
+                    movements.excess_pushout[sync_index],
+                )
+            if sync_index in movements.cumulative_pushout_movement:
+                gen_pushout_events(
+                    commit_evt,
+                    f"{event_row.group}.debounced_cumulative_pushout",
+                    movements.cumulative_pushout_movement[sync_index],
+                )
+
+        return pushout_events
+
+    def commit_sync_index_candidates(self) -> list[int]:
+        """Return commit indexes near the resource view's visible start time."""
+        if self._commit_sync_event is None or self._commit_sync_data_name is None:
+            return []
+        if self._commit_sync_event not in self.stream_data.event_rows:
+            return []
+
+        closest_commit = self.stream_data.event_rows[self._commit_sync_event].closest_to(self.state.start_ps)
+        if not closest_commit:
+            return []
+
+        candidates = []
+        # Offer the closest commit and a short lookahead so the peer can choose
+        # the first candidate that also exists in its commit/pushout indexes.
+        for _ in range(21):
+            if self._commit_sync_data_name in closest_commit.data:
+                candidates.append(closest_commit.data[self._commit_sync_data_name])
+
+            if next_commit := self.stream_data.event_rows[self._commit_sync_event].oldest_younger(closest_commit):
+                closest_commit = next_commit
+            else:
+                break
+
+        return candidates
 
 
 class SubsetResourceView(ResourceView):
@@ -129,6 +202,14 @@ class SubsetResourceView(ResourceView):
 
     def empty(self) -> bool:
         return not self.events
+
+    def start_commit_sync(self, commit_syncer: CommitSyncer, commit_event: str, commit_data_name: str) -> list[Event]:
+        """Prepare subset resource sync without adding resource pushout rows."""
+        return EventView.start_commit_sync(self, commit_syncer, commit_event, commit_data_name)
+
+    def commit_sync_index_candidates(self) -> list[int]:
+        """Return no commit candidates for subset resource views."""
+        return EventView.commit_sync_index_candidates(self)
 
     def add_event(self, event: str):
         if event not in self.events:
@@ -171,12 +252,6 @@ class SubsetResourceView(ResourceView):
 
     def max_rows(self) -> int | None:
         return self._max_rows
-
-    def _update_selected_row_name(self, newly_selected_row: str) -> None:
-        for i, row_name in enumerate(self.events):
-            if newly_selected_row == row_name:
-                self.list_walker.set_focus(i)
-                return
 
     def rows(self, size: tuple[int], focus: bool = False) -> int:
         if not self.events:
