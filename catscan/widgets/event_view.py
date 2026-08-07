@@ -225,7 +225,7 @@ class LazyEventListWalker(urwid.ListWalker):
         self._create_rows = create_rows
         self._load_rows = load_rows
         self._max_rows = max_rows
-        self._cleanup_above = int(math.ceil(max_rows * (1 + cleanup_threshold)))
+        self._cleanup_above = math.ceil(max_rows * (1 + cleanup_threshold))
         self._total_rows = None
         self._all_rows_func = all_rows
         self._has_groups = has_groups
