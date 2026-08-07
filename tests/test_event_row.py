@@ -116,6 +116,18 @@ class TestEventRow(CatscanDataTest):
         self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
         self.assertTrue(hover.abbrev_visible)
 
+    def test_hover_expanded_truncated_abbrev_is_not_visible(self):
+        state = self._state(expand_rows=True, cycles_per_char=Fraction(1, 4))
+        row = self._event_row(state)
+        event = next(row.ed[state.start_ps :])
+        event.abbrev = "flush"
+        row.render((80,), False)
+
+        hover = row.mouse_to_hover(state.column_header_width, 0)
+
+        self.assertTrue(hover.is_event())
+        self.assertFalse(hover.abbrev_visible)
+
     def test_hover_collapsed_single_event_cell_returns_event(self):
         state = self._state(expand_rows=False)
         row = self._event_row(state)

@@ -14,7 +14,7 @@ from catscan.data import NUM_EVENT_COLORS, Event, EventData, TransactionEventDat
 from catscan.search import Searcher
 from catscan.state import CatscanState, HashableFrozenDict, HoverSelection, Selection
 from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents, is_mouse_hover_event
-from catscan.util import even_odd_focused, str_fit_width
+from catscan.util import even_odd_focused, str_fit_width, str_width
 
 
 # TODO should this grow?
@@ -370,6 +370,7 @@ class EventRow(EventRowBase):
         self.on_hover = on_hover
         self.active_background = active_background
         self.expanded_allowed = expanded_allowed
+        self._visible_abbrev_event_ids: set[int] = set()
         super().__init__()
 
     @property
@@ -593,6 +594,8 @@ class EventRow(EventRowBase):
 
             for l, event in enumerate(display_events):
                 color_idx, text = self.render_event(event, cols_this_cycle)
+                if str_width(event.abbrev) <= cols_this_cycle:
+                    self._visible_abbrev_event_ids.add(event.id)
 
                 if highlighting_search_row and self.state.searcher.match(event):
                     color_idx = 7
@@ -729,6 +732,7 @@ class EventRow(EventRowBase):
 
         has_focus = focus and self.state.has_focus
         default_attr = f"{even_odd_focused(self.row_index, has_focus)}_event_row"
+        self._visible_abbrev_event_ids.clear()
 
         if self.expanded:
             rows = max(1, self.ed.max_events_per_time())
@@ -751,10 +755,11 @@ class EventRow(EventRowBase):
         return self.state.selection.adjust_within_row(event, duration=self.state.ps_per_cycle, **kwargs)
 
     def _make_hover(self, **kwargs: Any) -> HoverSelection:
+        event = kwargs.get("event")
         return HoverSelection(
             event_row=self.ed.key(),
             within_transaction=self._transaction_row,
-            abbrev_visible=self.expanded and self.state.cycles_per_char.numerator == 1,
+            abbrev_visible=event is not None and event.id in self._visible_abbrev_event_ids,
             **kwargs,
         )
 

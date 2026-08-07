@@ -161,13 +161,27 @@ class HoverPopupController:
             return event
         return None
 
+    def single_event_lines(self, hover: HoverSelection, event: Event) -> list[str]:
+        data = format_event_data(event.data, event.name, self.hexargs_re, self.state.sort_event_keys)
+        if hover.abbrev_visible and all(name == "txid" for name in data):
+            return []
+
+        cycles = round(event.time // self.state.ps_per_cycle)
+        lines = [f"time: {cycles:,} cyc"]
+        if not hover.abbrev_visible:
+            lines.insert(0, f"abbrev: {event.abbrev}")
+        if hover.within_transaction():
+            lines.insert(0, f"name: {event.name}")
+        lines.extend(f"{name}: {value}" for name, value in data.items())
+        return lines
+
     def enabled_for_target(self, hover: HoverSelection) -> bool:
         if not hover:
             return True
         if not self.single_event_enabled and not self.multiple_event_enabled:
             return False
-        if self.single_event_for_hover(hover) is not None:
-            return self.single_event_enabled
+        if event := self.single_event_for_hover(hover):
+            return self.single_event_enabled and bool(self.single_event_lines(hover, event))
         return self.multiple_event_enabled
 
     def content(self) -> tuple[list[str], bool]:
@@ -176,17 +190,8 @@ class HoverPopupController:
             return [], False
 
         if event := self.single_event_for_hover(hover):
-            cycles = round(event.time // self.state.ps_per_cycle)
-            lines = [
-                f"time: {cycles:,} cyc",
-            ]
-            if not hover.abbrev_visible:
-                lines.insert(0, f"abbrev: {event.abbrev}")
-            if hover.within_transaction():
-                lines.insert(0, f"name: {event.name}")
-            data = format_event_data(event.data, event.name, self.hexargs_re, self.state.sort_event_keys)
-            lines.extend(f"{name}: {value}" for name, value in data.items())
-            return lines, True
+            lines = self.single_event_lines(hover, event)
+            return lines, bool(lines)
 
         histogram = summary_histogram(
             self.data_view_for_hover(hover).get(hover.event_row)[hover.start_ps : hover.end_ps]

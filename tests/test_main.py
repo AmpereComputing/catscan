@@ -18,6 +18,7 @@ from test_data import CatscanDataTest
 
 from catscan.__main__ import load_mapping_file_abbreviations, setup
 from catscan.colors import palette
+from catscan.data import CatscanEvent
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 from catscan.mouse_tracking import XTERM_DISABLE_ALL_MOTION, XTERM_ENABLE_ALL_MOTION
@@ -219,6 +220,12 @@ class TestMain(CatscanDataTest):
 
     def first_event(self, row: str):
         return next(self.event_data().event_rows[row][0:PS_PER_CYCLE])
+
+    @staticmethod
+    def minimal_event(*, data: dict | None = None, abbrev: str = "minimal") -> CatscanEvent:
+        event = CatscanEvent(definition_id=0, event_id=0, time=0, name="minimal.event", data=data)
+        event.abbrev = abbrev
+        return event
 
     def canvas_text(self, lines: Iterable[bytes]) -> str:
         return "\n".join(line.decode() for line in lines)
@@ -495,6 +502,40 @@ class TestMain(CatscanDataTest):
         self.assertNotIn("row: event_0", lines)
         self.assertEqual(f"time: {event.time // PS_PER_CYCLE:,} cyc", lines[0])
         self.assertNotIn("ps", lines[0])
+
+    def test_hover_popup_suppresses_single_event_with_only_time_and_txid(self):
+        top = self.loaded_top()
+
+        for data in (None, {"txid": 1}):
+            with self.subTest(data=data):
+                event = self.minimal_event(data=data)
+                top.hover_popup.on_hover(
+                    HoverSelection("minimal", event=event, view="main.resource", abbrev_visible=True)
+                )
+
+                self.assertFalse(top.hover_popup.target)
+                self.assertEqual([], top.hover_popup.lines())
+
+    def test_hover_popup_suppresses_transaction_event_with_only_time_and_txid(self):
+        top = self.loaded_top()
+        event = self.minimal_event(data={"txid": 1})
+
+        top.hover_popup.on_hover(
+            HoverSelection(
+                "minimal", event=event, within_transaction=True, view="main.transaction", abbrev_visible=True
+            )
+        )
+
+        self.assertFalse(top.hover_popup.target)
+
+    def test_hover_popup_shows_hidden_abbrev_for_txid_only_event(self):
+        top = self.loaded_top()
+        event = self.minimal_event(data={"txid": 1}, abbrev="long-abbreviation")
+
+        top.hover_popup.on_hover(HoverSelection("minimal", event=event, view="main.resource", abbrev_visible=False))
+
+        self.assertTrue(top.hover_popup.target)
+        self.assertEqual(f"abbrev: {event.abbrev}", top.hover_popup.lines()[0])
 
     def test_hover_popup_transaction_single_event_starts_with_name(self):
         top = self.loaded_top()
