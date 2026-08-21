@@ -31,6 +31,7 @@ class Commands(StrEnum):
     UNPIN_ROW = "unpin"
     ZOOM = "zoom"
     MARKS = "marks"
+    AUTOPAN = "autopan"
 
 
 # Commands which are not explicit (i.e. ":<argument>")
@@ -46,6 +47,15 @@ class ZoomTypes(StrEnum):
     SEARCH = "search"
     HIGHLIGHTS = "highlights"
     MARKS = "marks"
+
+
+class AutopanMode(StrEnum):
+    """How focused event rows are automatically brought into view."""
+
+    NONE = "none"
+    FIRST_EVENT = "first-event"
+    NEAREST_EVENT = "nearest-event"
+    COMMIT_EVENT = "commit-event"
 
 
 class Arg:
@@ -525,6 +535,11 @@ completable_commands = [
     CommandDefinition(
         Commands.MARKS,
         "Show all marks",
+    ),
+    CommandDefinition(
+        Commands.AUTOPAN,
+        "Automatically pan to a focused row's first, nearest, or commit event",
+        args=(Arg.Required("mode", types=AutopanMode),),
     ),
 ]
 default_commands = [

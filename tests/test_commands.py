@@ -3,7 +3,12 @@
 
 import unittest
 
-from catscan.commands import Arg, CommandCompletion, CommandDefinition, parse_command_args
+from catscan.commands import (
+    Arg,
+    CommandCompletion,
+    CommandDefinition,
+    parse_command_args,
+)
 
 
 class TestCommandCompletion(unittest.TestCase):

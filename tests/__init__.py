@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
+from catscan.commands import AutopanMode
 from catscan.commit_sync import CommitSyncer, CommitSyncState
 from catscan.data import DataView, get_event_data
 from catscan.events import trace_events
@@ -26,6 +27,7 @@ class Args:
         self.sort_keys = True
         self.instruction_commit_event = "core.commit"
         self.instruction_commit_index = "core.inum"
+        self.autopan = AutopanMode.NONE
         self.convert_enumerations = True
         self.debug = True
         self.hex = []

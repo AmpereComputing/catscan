@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import unittest
+import unittest.mock
 from contextlib import suppress
 from functools import partial
 from io import BufferedReader, StringIO, TextIOWrapper
@@ -15,7 +16,8 @@ import urwid
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
-from catscan.__main__ import load_mapping_file_abbreviations, setup
+from catscan.__main__ import load_mapping_file_abbreviations, parse_args, setup
+from catscan.commands import AutopanMode
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 
@@ -32,6 +34,7 @@ class Args:
         self.sort_keys = True
         self.instruction_commit_event = "core.commit"
         self.instruction_commit_index = "core.inum"
+        self.autopan = AutopanMode.NONE
         self.convert_enumerations = True
         self.debug = True
 
@@ -140,6 +143,42 @@ add_abbreviation(ValueStringAbbreviation(["second"], value_suffix="second_suffix
         self.assertEqual(
             ["first_suffix", "second_suffix"], [abbreviation.value_suffix for abbreviation in abbreviations]
         )
+
+
+class TestArgumentParsing(unittest.TestCase):
+    def test_autopan_defaults_to_none(self):
+        with unittest.mock.patch.object(sys, "argv", ["catscan"]):
+            args = parse_args()
+
+        self.assertEqual(args.autopan, AutopanMode.NONE)
+
+    def test_autopan_accepts_first_event(self):
+        with unittest.mock.patch.object(sys, "argv", ["catscan", "--autopan", "first-event"]):
+            args = parse_args()
+
+        self.assertEqual(args.autopan, AutopanMode.FIRST_EVENT)
+
+    def test_autopan_accepts_nearest_event(self):
+        with unittest.mock.patch.object(sys, "argv", ["catscan", "--autopan", "nearest-event"]):
+            args = parse_args()
+
+        self.assertEqual(args.autopan, AutopanMode.NEAREST_EVENT)
+
+    def test_config_file_accepts_transaction_commit_event_autopan(self):
+        with NamedTemporaryFile("w") as config_file:
+            config_file.write("--view transactions\n--autopan commit-event\n")
+            config_file.flush()
+            with unittest.mock.patch.object(sys, "argv", ["catscan", f"@{config_file.name}"]):
+                args = parse_args()
+
+        self.assertEqual(args.autopan, AutopanMode.COMMIT_EVENT)
+
+    def test_resource_view_rejects_commit_event_autopan(self):
+        with (
+            unittest.mock.patch.object(sys, "argv", ["catscan", "--autopan", "commit-event"]),
+            self.assertRaises(SystemExit),
+        ):
+            parse_args()
 
 
 class TestMain(CatscanDataTest):

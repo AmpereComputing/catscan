@@ -406,6 +406,7 @@ class EventView(urwid.WidgetWrap, View):
         on_extend_selection: Callable,
         on_translate_event: Callable,
         on_focus_row_change: Callable | None = None,
+        on_row_navigation: Callable | None = None,
         length_hint: int = 1,
     ) -> None:
         self.name = name
@@ -420,6 +421,7 @@ class EventView(urwid.WidgetWrap, View):
         self._on_extend_selection = on_extend_selection
         self.on_translate_event = on_translate_event
         self.on_focus_row_change = on_focus_row_change
+        self.on_row_navigation = on_row_navigation
 
         self.list_walker = None
         self.list_box = None
@@ -588,6 +590,23 @@ class EventView(urwid.WidgetWrap, View):
             return rowwidget.ed.start_time, rowwidget.ed.end_time
         return 0, 0
 
+    def visible_time_range(self) -> tuple[int, int]:
+        """Return the horizontal event-time range currently rendered by this view."""
+        visible_columns = max(0, self._columns - self.scrollable._border_width - self.state.column_header_width)
+        start_ps = self.state.start_ps - (self.state.start_ps % self.state.ps_per_cycle)
+        difference_chars = math.floor((self.state.start_ps - start_ps) / self.state.ps_per_char)
+        visible_cycles = math.ceil((visible_columns + difference_chars) * self.state.cycles_per_char)
+        end_ps = start_ps + visible_cycles * self.state.ps_per_cycle
+        return start_ps, end_ps
+
+    def _notify_row_navigation(self, previous_row_key: str | int | None) -> None:
+        if self.on_row_navigation is None:
+            return
+
+        focused_row_key = self.focused_row_key()
+        if focused_row_key is not None and focused_row_key != previous_row_key:
+            self.on_row_navigation(self, focused_row_key)
+
     def _emit_position_change_notifications(self, force: bool = False) -> None:
         self._emit_focus_change_if_needed(None, force=force)
 
@@ -689,6 +708,7 @@ class EventView(urwid.WidgetWrap, View):
         row: int,
         focus: bool,
     ) -> bool | None:
+        previous_row_key = self.focused_row_key()
         eb = (event, button)
         mouse_diff = (0, 0)
         if self._last_mouse_location is not None:
@@ -715,10 +735,14 @@ class EventView(urwid.WidgetWrap, View):
                 self._shift_focus(size, -mouse_diff[1])
 
             self._emit_position_change_notifications()
+            if mouse_diff[1] != 0:
+                self._notify_row_navigation(previous_row_key)
             return True
 
         handled = self._w.mouse_event(size, event, button, col, row, focus)
         self._emit_position_change_notifications()
+        if event == "mouse press":
+            self._notify_row_navigation(previous_row_key)
         return handled
 
     def keypress(
@@ -727,6 +751,7 @@ class EventView(urwid.WidgetWrap, View):
         key: str,
     ) -> str | None:
         (maxcol, maxrow) = size
+        previous_row_key = self.focused_row_key()
 
         # Because the underlying container widget only understands 'up' and
         # 'down' translate whatever keys we want to use for down/up (i.e. j/k)
@@ -742,11 +767,15 @@ class EventView(urwid.WidgetWrap, View):
                 key = translation
                 break
 
+        vertical_navigation = key in {"up", "down", "page up", "page down"}
+
         # First, see if any of the children of this widget want to handle these
         # keypresses
         key = self._w.keypress(size, key)
         if key is None:
             self._emit_position_change_notifications()
+            if vertical_navigation:
+                self._notify_row_navigation(previous_row_key)
             return None
 
         handled = False
@@ -763,15 +792,19 @@ class EventView(urwid.WidgetWrap, View):
         elif key in action_keypresses[ACTIONS.SCROLL_HALF_PAGE_UP]:
             self._shift_view(size, self.list_box.get_focus_offset_inset(size)[1] - int(maxrow / 2))
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.SCROLL_HALF_PAGE_DOWN]:
             self._shift_view(size, self.list_box.get_focus_offset_inset(size)[1] + int(maxrow / 2))
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.SCROLL_TOP]:
             self._shift_view(size, -self.list_box.focus_position)
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.SCROLL_BOTTOM]:
             self._shift_view(size, len(self.list_walker) - 1)
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.TOP_FOCUS]:
             self.list_box.set_focus_valign("top")
             handled = True
@@ -784,6 +817,8 @@ class EventView(urwid.WidgetWrap, View):
 
         if handled:
             self._emit_position_change_notifications()
+            if vertical_navigation:
+                self._notify_row_navigation(previous_row_key)
             return None
 
         return key
