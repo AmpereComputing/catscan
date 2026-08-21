@@ -592,12 +592,16 @@ class EventView(urwid.WidgetWrap, View):
 
     def visible_time_range(self) -> tuple[int, int]:
         """Return the horizontal event-time range currently rendered by this view."""
-        visible_columns = max(0, self._columns - self.scrollable._border_width - self.state.column_header_width)
+        visible_columns = self.visible_event_columns()
         start_ps = self.state.start_ps - (self.state.start_ps % self.state.ps_per_cycle)
         difference_chars = math.floor((self.state.start_ps - start_ps) / self.state.ps_per_char)
         visible_cycles = math.ceil((visible_columns + difference_chars) * self.state.cycles_per_char)
         end_ps = start_ps + visible_cycles * self.state.ps_per_cycle
         return start_ps, end_ps
+
+    def visible_event_columns(self) -> int:
+        """Return the number of event-data columns currently rendered."""
+        return max(0, self._columns - self.scrollable._border_width - self.state.column_header_width)
 
     def _notify_row_navigation(self, previous_row_key: str | int | None) -> None:
         if self.on_row_navigation is None:

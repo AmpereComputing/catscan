@@ -31,7 +31,7 @@ class Autopan:
 
     @staticmethod
     def _last_event_start_time(view: EventView, event_time: int) -> int:
-        visible_columns = max(0, view._columns - view.scrollable._border_width - view.state.column_header_width)
+        visible_columns = view.visible_event_columns()
         return event_time - round((visible_columns - 1) * view.state.ps_per_char)
 
     @staticmethod

@@ -30,6 +30,21 @@ class TestAutopan(TransactionSyncDataTest):
 
         self.assertEqual(top.state.start_ps, 40)
 
+    def test_first_event_stays_visible_after_coarse_zoom_alignment(self):
+        top = self.make_top(size=(20, 1))
+        top.autopan.mode = AutopanMode.FIRST_EVENT
+        view = top._transaction_view
+        view_width = top.state.column_header_width + 3
+        top.update_state(top.state.copy_with(cycles_per_char=Fraction(4, 1), start_ps=200))
+        view.render((view_width, 1), focus=True)
+        view.scroll_row_to_edge(self.txids[1], "top")
+
+        view.keypress((view_width, 1), "down")
+
+        start_ps, end_ps = view.visible_time_range()
+        self.assertLessEqual(start_ps, 70)
+        self.assertLess(70, end_ps)
+
     def test_first_event_pans_when_clicking_a_row(self):
         top = self.make_top(size=(20, 2))
         top.autopan.mode = AutopanMode.FIRST_EVENT

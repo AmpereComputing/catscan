@@ -696,7 +696,8 @@ class Top(urwid.widget.Widget):
         if target_time is None:
             return False
 
-        return self.update_state(self.state.copy_with(start_ps=target_time), external_sync=external_sync)
+        target_start_ps = int(target_time // self.state.ps_per_char * self.state.ps_per_char)
+        return self.update_state(self.state.copy_with(start_ps=target_start_ps), external_sync=external_sync)
 
     def on_row_navigation(self, view: EventView, row_key: str | int) -> None:
         """Auto-pan after a user navigation changes an event-row focus."""
