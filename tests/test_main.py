@@ -164,6 +164,14 @@ class TestArgumentParsing(unittest.TestCase):
 
         self.assertEqual(args.autopan, AutopanMode.NEAREST_EVENT)
 
+    def test_transactions_view_accepts_commit_event_autopan(self):
+        with unittest.mock.patch.object(
+            sys, "argv", ["catscan", "--view", "transactions", "--autopan", "commit-event"]
+        ):
+            args = parse_args()
+
+        self.assertEqual(args.autopan, AutopanMode.COMMIT_EVENT)
+
     def test_config_file_accepts_transaction_commit_event_autopan(self):
         with NamedTemporaryFile("w") as config_file:
             config_file.write("--view transactions\n--autopan commit-event\n")

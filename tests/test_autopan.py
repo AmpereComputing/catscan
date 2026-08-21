@@ -209,10 +209,12 @@ class TestAutopan(TransactionSyncDataTest):
         view = top._resource_view
         view.render((20, 1), focus=True)
         view.scroll_row_to_edge(view.iter_event_rows().keys()[0], "top")
+        self._set_start_time(top, 200)
 
         view.keypress((20, 1), "g-g")
 
         self.assertIsNone(view.focused_row_key())
+        self.assertEqual(top.state.start_ps, 200)
 
     def test_command_changes_mode_and_rejects_resource_commit_mode(self):
         top = self.make_top(size=(20, 1))
