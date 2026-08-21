@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from catscan.commands import AutopanMode
@@ -51,28 +52,43 @@ class Autopan:
             return younger_event
         return older_event
 
+    def _event_time(
+        self,
+        row: EventData,
+        event_name: str | None,
+        predicate: Callable[[Event], bool] | None = None,
+    ) -> int | None:
+        """Return the first event time matching an event name and optional predicate."""
+        for event in row[:]:
+            if event.name == event_name and (predicate is None or predicate(event)):
+                return event.time
+        return None
+
     def _commit_time(
         self,
         row: EventData,
         commit_syncer: Any | None,
         sync_index: int | None,
     ) -> int | None:
-        commit_events = [
-            event for event in row[:] if event.name == self.commit_event and self.commit_data_name in event.data
-        ]
-        if sync_index is not None:
-            for event in commit_events:
-                if event.data[self.commit_data_name] == sync_index:
-                    return event.time
+        if self.commit_data_name is None:
             return None
+
+        data_name = self.commit_data_name
+        if sync_index is not None:
+            return self._event_time(
+                row,
+                self.commit_event,
+                lambda event: event.data.get(data_name) == sync_index,
+            )
 
         if commit_syncer is None:
             return None
 
-        for event in commit_events:
-            if commit_syncer.other_has_sync_index(event.data[self.commit_data_name]):
-                return event.time
-        return None
+        return self._event_time(
+            row,
+            self.commit_event,
+            lambda event: data_name in event.data and commit_syncer.other_has_sync_index(event.data[data_name]),
+        )
 
     def target_time(
         self,

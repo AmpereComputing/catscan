@@ -149,6 +149,13 @@ class TestAutopan(TransactionSyncDataTest):
 
         self.assertEqual(top.state.start_ps, 50)
 
+    def test_event_time_uses_the_requested_event_name(self):
+        top = self.make_top(size=(20, 1))
+        row = top._transaction_view.data_view().get(self.txids[1])
+
+        self.assertEqual(top.autopan._event_time(row, "core.commit"), 50)
+        self.assertEqual(top.autopan._event_time(row, "work"), 40)
+
     def test_commit_event_without_sync_falls_back_to_first_event(self):
         top = self.make_top(size=(20, 1))
         top.autopan.mode = AutopanMode.COMMIT_EVENT
