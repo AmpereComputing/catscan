@@ -582,7 +582,7 @@ class EventView(urwid.WidgetWrap, View):
     def focused_row_key(self) -> str | int | None:
         """Return the key for the focused event row, if any."""
         row_type, row_key = self.focused_row()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
+        return row_key if row_type is RowType.EVENT else None
 
     def focused_time_range(self, all_views: bool = False) -> tuple[int, int]:
         rowwidget, _ = self.list_walker.get_focus()
@@ -627,7 +627,7 @@ class EventView(urwid.WidgetWrap, View):
             return None
 
         row_type, row_key = self.list_box.body[position].row_id()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
+        return row_key if row_type is RowType.EVENT else None
 
     def visible_row_keys(self) -> list[str | int]:
         """Return row keys currently visible in top-to-bottom order."""

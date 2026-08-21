@@ -203,6 +203,17 @@ class TestAutopan(TransactionSyncDataTest):
 
         self.assertEqual(top.state.start_ps, view.data_view().get(target_row).first_time)
 
+    def test_resource_group_navigation_does_not_attempt_to_auto_pan(self):
+        top = self.make_top(size=(20, 1), view=DataView.RESOURCE)
+        top.autopan.mode = AutopanMode.FIRST_EVENT
+        view = top._resource_view
+        view.render((20, 1), focus=True)
+        view.scroll_row_to_edge(view.iter_event_rows().keys()[0], "top")
+
+        view.keypress((20, 1), "g-g")
+
+        self.assertIsNone(view.focused_row_key())
+
     def test_command_changes_mode_and_rejects_resource_commit_mode(self):
         top = self.make_top(size=(20, 1))
         top.update_state(top.state.copy_with(loading=False))
