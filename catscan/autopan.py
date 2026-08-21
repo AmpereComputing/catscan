@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from catscan.commands import AutopanMode
 
 if TYPE_CHECKING:
-    from catscan.data import EventData
+    from catscan.data import Event, EventData
     from catscan.widgets.event_view import EventView
 
 
@@ -35,7 +35,7 @@ class Autopan:
         return event_time - round((visible_columns - 1) * view.state.ps_per_char)
 
     @staticmethod
-    def _nearest_event_is_after_viewport(view: EventView, row: EventData) -> bool:
+    def _nearest_offscreen_event(view: EventView, row: EventData) -> Event | None:
         start_ps, end_ps = view.visible_time_range()
         older_event = row.closest_to(start_ps, direction="backwards")
         younger_event = row.closest_to(end_ps, direction="forwards")
@@ -44,10 +44,12 @@ class Autopan:
         if younger_event is not None and younger_event.time < end_ps:
             younger_event = None
         if older_event is None:
-            return True
+            return younger_event
         if younger_event is None:
-            return False
-        return younger_event.time - end_ps <= start_ps - older_event.time
+            return older_event
+        if younger_event.time - end_ps <= start_ps - older_event.time:
+            return younger_event
+        return older_event
 
     def _commit_time(
         self,
@@ -88,7 +90,12 @@ class Autopan:
             commit_time = self._commit_time(row, commit_syncer, sync_index)
             if commit_time is not None:
                 return commit_time
-        elif self.mode == AutopanMode.NEAREST_EVENT and not self._nearest_event_is_after_viewport(view, row):
-            return self._last_event_start_time(view, row.last_time)
+        elif self.mode == AutopanMode.NEAREST_EVENT:
+            nearest_event = self._nearest_offscreen_event(view, row)
+            if nearest_event is not None:
+                start_ps, _ = view.visible_time_range()
+                if nearest_event.time < start_ps:
+                    return self._last_event_start_time(view, nearest_event.time)
+                return nearest_event.time
 
         return row.first_time

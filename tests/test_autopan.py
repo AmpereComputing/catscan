@@ -86,6 +86,36 @@ class TestAutopan(TransactionSyncDataTest):
             view.data_view().get(self.txids[2]).last_time,
         )
 
+    def test_nearest_event_pans_to_the_closest_later_sparse_event(self):
+        top = self.make_top(size=(20, 1))
+        top.autopan.mode = AutopanMode.NEAREST_EVENT
+        view = top._transaction_view
+        view.render((top.state.column_header_width + 3, 1), focus=True)
+        view.visible_time_range = lambda: (11, 19)
+
+        target_time = top.autopan.target_time(
+            view,
+            view.data_view().get(self.txids[0]),
+            commit_syncer=top.commit_syncer,
+        )
+
+        self.assertEqual(target_time, 20)
+
+    def test_nearest_event_pans_to_the_closest_earlier_sparse_event(self):
+        top = self.make_top(size=(20, 1))
+        top.autopan.mode = AutopanMode.NEAREST_EVENT
+        view = top._transaction_view
+        view.render((top.state.column_header_width + 3, 1), focus=True)
+        view.visible_time_range = lambda: (11, 18)
+
+        target_time = top.autopan.target_time(
+            view,
+            view.data_view().get(self.txids[0]),
+            commit_syncer=top.commit_syncer,
+        )
+
+        self.assertEqual(target_time, top.autopan._last_event_start_time(view, 10))
+
     def test_visible_later_event_prevents_pan_for_sparse_row(self):
         top = self.make_top(size=(20, 1))
         top.autopan.mode = AutopanMode.FIRST_EVENT
