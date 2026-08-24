@@ -6,7 +6,7 @@ import os
 import sys
 import unittest
 import unittest.mock
-from contextlib import suppress
+from contextlib import redirect_stderr, redirect_stdout, suppress
 from functools import partial
 from io import BufferedReader, StringIO, TextIOWrapper
 from pathlib import Path
@@ -149,6 +149,8 @@ class TestArgumentParsing(unittest.TestCase):
     def test_resource_view_rejects_commit_event_autopan(self):
         with (
             unittest.mock.patch.object(sys, "argv", ["catscan", "--autopan", "commit-event"]),
+            redirect_stdout(StringIO()),
+            redirect_stderr(StringIO()),
             self.assertRaises(SystemExit),
         ):
             parse_args()
