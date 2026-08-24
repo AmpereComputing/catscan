@@ -222,7 +222,6 @@ class Top(urwid.widget.Widget):
             "on_extend_selection": self.extend_selection,
             "on_translate_event": self.translate_event,
             "on_focus_row_change": self.on_focus_row_change,
-            "on_row_navigation": self.on_row_navigation,
         }
         if issubclass(cls, TransactionView):
             view_kwargs["on_viewport_change"] = self.on_viewport_change
@@ -698,10 +697,6 @@ class Top(urwid.widget.Widget):
 
         target_start_ps = int(target_time // self.state.ps_per_char * self.state.ps_per_char)
         return self.update_state(self.state.copy_with(start_ps=target_start_ps), external_sync=external_sync)
-
-    def on_row_navigation(self, view: EventView, row_key: str | int) -> None:
-        """Auto-pan after a user navigation changes an event-row focus."""
-        self._auto_pan_to_row(view, row_key)
 
     def make_selection(self, selection: Event | Selection, views: list[str] | None = None) -> bool:
         if isinstance(selection, Event):
@@ -1295,14 +1290,16 @@ class Top(urwid.widget.Widget):
     def on_focus_row_change(
         self,
         view: EventView,
-        _focused_row_key: str | int | None,
+        focused_row_key: str | int | None,
         movement_alignment: Literal["before", "after"] | None,
+        user: bool,
     ) -> None:
-        """Send commit sync when the focused transaction row changes."""
-        if not self._should_send_transaction_commit_sync(view):
-            return
+        """Send commit sync and auto-pan after focused-row changes."""
+        if self._should_send_transaction_commit_sync(view):
+            self.send_commit_sync(movement_alignment=movement_alignment)
 
-        self.send_commit_sync(movement_alignment=movement_alignment)
+        if user and focused_row_key is not None:
+            self._auto_pan_to_row(view, focused_row_key)
 
     def matching_rows(self, pattern: str) -> list[str]:
         row_pattern = glob_to_pattern(pattern)

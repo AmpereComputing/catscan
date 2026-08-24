@@ -261,7 +261,9 @@ class TransactionSyncDataTest(CatscanDataTest):
 
     def make_resource_view(self, view_type=ResourceView, focus_callback=None, **kwargs):
         events = []
-        focus_callback = focus_callback or (lambda _view, focused_row_key, _align: events.append(focused_row_key))
+        focus_callback = focus_callback or (
+            lambda _view, focused_row_key, _align, _user: events.append(focused_row_key)
+        )
         view = view_type(
             "resource",
             self.make_state(),

@@ -90,19 +90,35 @@ class TestTransactionViewViewport(TransactionSyncDataTest):
         self.assertEqual(view.focused_row()[1], self.txids[3])
         self.assertEqual(view.visible_row_keys()[-1], self.txids[3])
 
-    def test_focus_row_change_receives_movement_alignment(self):
-        alignments = []
+    def test_focus_row_change_receives_movement_alignment_and_user_flag(self):
+        notifications = []
         view, _events = self.make_transaction_view(
-            focus_callback=lambda _view, _focused_row_key, movement_alignment: alignments.append(movement_alignment)
+            focus_callback=lambda _view, _focused_row_key, movement_alignment, user: notifications.append(
+                (movement_alignment, user)
+            )
         )
         size = (80, 1)
         view.render(size, focus=True)
-        alignments.clear()
+        notifications.clear()
 
         view.keypress(size, "down")
         view.keypress(size, "up")
 
-        self.assertEqual(alignments, ["after", "before"])
+        self.assertEqual(notifications, [("after", True), ("before", True)])
+
+    def test_programmatic_focus_change_is_not_user_initiated(self):
+        notifications = []
+        view, _events = self.make_transaction_view(
+            focus_callback=lambda _view, focused_row_key, _alignment, user: notifications.append(
+                (focused_row_key, user)
+            )
+        )
+        view.render((80, 1), focus=True)
+        notifications.clear()
+
+        view.update_selected_row(Selection(self.txids[3]))
+
+        self.assertEqual(notifications, [(self.txids[3], False)])
 
 
 class TestTopTransactionCommitSync(TransactionSyncDataTest):
