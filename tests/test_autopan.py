@@ -3,7 +3,7 @@
 
 from fractions import Fraction
 
-from catscan.commands import AutopanMode
+from catscan.autopan import AutopanMode
 from catscan.commit_sync import CommitSyncState
 from catscan.data import DataView
 from tests import DummyCommitSyncer, TransactionSyncDataTest

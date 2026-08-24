@@ -16,8 +16,8 @@ from typing import Any, Literal
 import urwid
 from perf_streams.event_stream import Event
 
-from catscan.autopan import Autopan
-from catscan.commands import AutopanMode, Commands, DefaultCommands, ZoomTypes, command_definitions, parse_command_args
+from catscan.autopan import Autopan, AutopanMode
+from catscan.commands import Commands, DefaultCommands, ZoomTypes, command_definitions, parse_command_args
 from catscan.commit_sync import CommitSyncer, CommitSyncState, build_commit_index, build_pushout_index
 from catscan.data import (
     NUM_EVENT_COLORS,

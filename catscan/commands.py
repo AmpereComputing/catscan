@@ -11,6 +11,7 @@ from fractions import Fraction
 from functools import cached_property
 from typing import Any
 
+from catscan.autopan import AutopanMode
 from catscan.completion import FilteredSuggestions
 from catscan.search import MatchType
 from catscan.util import glob_to_pattern
@@ -47,15 +48,6 @@ class ZoomTypes(StrEnum):
     SEARCH = "search"
     HIGHLIGHTS = "highlights"
     MARKS = "marks"
-
-
-class AutopanMode(StrEnum):
-    """How focused event rows are automatically brought into view."""
-
-    NONE = "none"
-    FIRST_EVENT = "first-event"
-    NEAREST_EVENT = "nearest-event"
-    COMMIT_EVENT = "commit-event"
 
 
 class Arg:

@@ -8,13 +8,21 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
-
-from catscan.commands import AutopanMode
 
 if TYPE_CHECKING:
     from catscan.data import Event, EventData
     from catscan.widgets.event_view import EventView
+
+
+class AutopanMode(StrEnum):
+    """How focused event rows are automatically brought into view."""
+
+    NONE = "none"
+    FIRST_EVENT = "first-event"
+    NEAREST_EVENT = "nearest-event"
+    COMMIT_EVENT = "commit-event"
 
 
 class Autopan:

@@ -14,8 +14,8 @@ import urwid
 
 from catscan import events
 from catscan.argument_parser import ArgumentParser
+from catscan.autopan import AutopanMode
 from catscan.colors import palette
-from catscan.commands import AutopanMode
 from catscan.data import DataView
 from catscan.events import trace_events
 from catscan.events.mapping import (

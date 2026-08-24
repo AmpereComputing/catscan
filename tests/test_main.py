@@ -17,7 +17,7 @@ from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
 from catscan.__main__ import load_mapping_file_abbreviations, parse_args, setup
-from catscan.commands import AutopanMode
+from catscan.autopan import AutopanMode
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 
