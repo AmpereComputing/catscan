@@ -28,10 +28,10 @@ class AutopanMode(StrEnum):
 class Autopan:
     """Store auto-pan configuration and choose a horizontal target time."""
 
-    def __init__(self, mode: AutopanMode, commit_event: str | None, commit_data_name: str | None) -> None:
+    def __init__(self, mode: AutopanMode, event: str | None, sync_index_name: str | None) -> None:
         self.mode = mode
-        self.commit_event = commit_event
-        self.commit_data_name = commit_data_name
+        self.event = event
+        self.sync_index_name = sync_index_name
 
     @staticmethod
     def _row_has_visible_event(view: EventView, row: EventData) -> bool:
@@ -78,14 +78,14 @@ class Autopan:
         commit_syncer: Any | None,
         sync_index: int | None,
     ) -> int | None:
-        if self.commit_data_name is None:
+        if self.sync_index_name is None:
             return None
 
-        data_name = self.commit_data_name
+        data_name = self.sync_index_name
         if sync_index is not None:
             return self._event_time(
                 row,
-                self.commit_event,
+                self.event,
                 lambda event: event.data.get(data_name) == sync_index,
             )
 
@@ -94,7 +94,7 @@ class Autopan:
 
         return self._event_time(
             row,
-            self.commit_event,
+            self.event,
             lambda event: data_name in event.data and commit_syncer.other_has_sync_index(event.data[data_name]),
         )
 
