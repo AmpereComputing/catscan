@@ -46,12 +46,14 @@ from catscan.user_input import (
     KEYPRESS_COMBINATION_TIMEOUT,
     action_keypresses,
     action_mouseevents,
+    is_mouse_hover_event,
 )
 from catscan.util import glob_to_pattern, hex_args_to_re
 from catscan.widgets.ampere_logo import AmpereLogo
 from catscan.widgets.event_row import RowType
 from catscan.widgets.event_sidebar import EventDetail
 from catscan.widgets.event_view import EventView, PrimarySplitEventView, RowViews, View, Views
+from catscan.widgets.hover_popup import HoverPopupController
 from catscan.widgets.popups import Help, Messages
 from catscan.widgets.resource_view import ResourceView, SubsetResourceView
 from catscan.widgets.separators import MiddleBorder
@@ -136,6 +138,13 @@ class Top(urwid.widget.Widget):
         self.hexargs_re = hex_args_to_re(args.hex)
 
         initial_esd = EventStreamData.create_empty()
+        self.hover_popup = HoverPopupController(
+            self.state,
+            initial_esd,
+            self.hexargs_re,
+            get_sidebar_width=lambda: self.sidebar_width,
+            invalidate=lambda: self._invalidate(),
+        )
 
         self.messages = Messages(
             self.state,
@@ -230,6 +239,7 @@ class Top(urwid.widget.Widget):
             self.state,
             initial_esd,
             *args,
+            on_hover=self.hover_popup.on_hover,
             **view_kwargs,
         )
 
@@ -480,12 +490,15 @@ class Top(urwid.widget.Widget):
             canvas = self.help.overlay(canvas, size, focus)
         elif showing_messages:
             canvas = self.messages.overlay(canvas, size, focus)
+        else:
+            canvas = self.hover_popup.overlay(canvas, size, focus)
         return canvas
 
     def update_stream_data(
         self, stream_data: EventStreamData, external_column_width: int = 0, zoom_to_extents: bool = True
     ) -> None:
         self.stream_data = stream_data
+        self.hover_popup.update_stream_data(stream_data)
 
         ps_per_cycle = stream_data.period if self._infer_period else self.state.ps_per_cycle
         if self.commit_sync_event in self.stream_data.event_rows:
@@ -505,6 +518,7 @@ class Top(urwid.widget.Widget):
         self.view_rows.update_stream_data(stream_data)
         self.event_details.update_stream_data(stream_data)
         self.summary_sidebar.update_stream_data(stream_data)
+        self.hover_popup.clear()
 
         max_column_width = max([self.view_rows.max_column_header_width(), external_column_width])
         new_state = self.state.copy_with(
@@ -545,11 +559,24 @@ class Top(urwid.widget.Widget):
 
         if new_state != self.state:
             old_state = self.state
-            should_send_commit_sync = not external_sync and not old_state.compare(
-                new_state, "ps_per_cycle", "column_header_width", "cycles_per_char", "expand_rows", "start_ps"
+            layout_changed = (
+                new_state.ps_per_cycle != old_state.ps_per_cycle
+                or new_state.column_header_width != old_state.column_header_width
+                or new_state.cycles_per_char != old_state.cycles_per_char
+                or new_state.expand_rows != old_state.expand_rows
+                or new_state.start_ps != old_state.start_ps
+            )
+            should_send_commit_sync = not external_sync and layout_changed
+            hover_stale = (
+                layout_changed
+                or new_state.selection != old_state.selection
+                or new_state.loading != old_state.loading
+                or new_state.messages != old_state.messages
+                or new_state.show_help != old_state.show_help
             )
 
             self.state = new_state
+            self.hover_popup.update_state(new_state)
             if new_state.selection:
                 self.event_details.update_state(new_state)
                 self.summary_sidebar.update_state(new_state)
@@ -560,6 +587,8 @@ class Top(urwid.widget.Widget):
 
             if new_state.expand_rows != old_state.expand_rows:
                 self._update_view_rows(invalidate=False)
+            if hover_stale:
+                self.hover_popup.clear()
             self._invalidate()
 
             if should_send_commit_sync:
@@ -1349,6 +1378,17 @@ class Top(urwid.widget.Widget):
             else:
                 self.show_help()
             return False
+        if command == Commands.HOVER:
+            if not args:
+                self.add_message(f"'{command}' requires single= and/or multiple=")
+                return False
+            if "single" in args:
+                self.hover_popup.single_event_enabled = args["single"]
+            if "multiple" in args:
+                self.hover_popup.multiple_event_enabled = args["multiple"]
+            if not self.hover_popup.enabled_for_target(self.hover_popup.target):
+                self.hover_popup.clear()
+            return True
         if self.state.loading:
             self.add_message(f"'{command}' cannot be executed while loading")
             return False
@@ -1588,9 +1628,13 @@ class Top(urwid.widget.Widget):
         row: int,
         focus: bool,
     ) -> bool | None:
+        self.hover_popup.mouse_event(size, event, button, col, row, focus)
         keyless_event = re.sub(r"^.*?mouse", "mouse", event)
+        hover_event = is_mouse_hover_event(event, button)
         original_event = event
-        if keyless_event == "mouse press":
+        if hover_event and (self.state.show_help or len(self.state.messages) > 0):
+            self.hover_popup.clear()
+        elif keyless_event == "mouse press":
             # Track last mouse press as release does not always have a button
             self.last_mouse_press_button = button
         elif keyless_event == "mouse drag":
@@ -1628,7 +1672,9 @@ class Top(urwid.widget.Widget):
         else:
             handled = self.frame.mouse_event(size, event, button, col, row, focus)
 
-        if handled:
+        if hover_event and not handled:
+            self.hover_popup.clear()
+        elif handled and not hover_event:
             self._invalidate()
         return handled
 

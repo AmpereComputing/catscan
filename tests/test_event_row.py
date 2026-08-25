@@ -10,7 +10,7 @@ from catscan.data import DataView, get_event_data
 from catscan.events import trace_events
 from catscan.events.mapping import Mapper
 from catscan.state import CatscanState, HashableFrozenDict, Selection
-from catscan.widgets.event_row import SUMMARY_BLOCK_SIZE, cycle_events
+from catscan.widgets.event_row import SUMMARY_BLOCK_SIZE, EventRow, cycle_events
 from catscan.widgets.event_view import LazyEventListBox, LazyEventListWalker
 from catscan.widgets.transaction_view import TransactionView
 
@@ -71,6 +71,104 @@ class TestEventRow(CatscanDataTest):
         for ps in self.__class__.FLUSH_TIMES_PS:
             self.assertEqual(len(flush_event_list[(ps - start_ps) // self.__class__.PS_PER_CYCLE]), 1)
         self.assertEqual(sum([len(c) for c in flush_event_list]), 6)
+
+    def _state(
+        self,
+        expand_rows: bool,
+        cycles_per_char: Fraction = Fraction(1, 1),
+        start_ps: int | None = None,
+    ) -> CatscanState:
+        return CatscanState(
+            has_focus=True,
+            loading=False,
+            ps_per_cycle=self.__class__.PS_PER_CYCLE,
+            column_header_width=8,
+            cycles_per_char=cycles_per_char,
+            start_ps=start_ps if start_ps is not None else self.__class__.FLUSH_TIMES_PS[0],
+            start_row=1,
+            expand_rows=expand_rows,
+            selection=Selection(),
+            sort_event_keys=True,
+            highlighted_transactions=HashableFrozenDict(),
+            marked_events=HashableFrozenDict(),
+            searcher=None,
+            messages=[],
+            show_help=False,
+        )
+
+    def _event_row(self, state: CatscanState) -> EventRow:
+        row = EventRow(
+            self.esd.event_rows["flush"],
+            state,
+            0,
+            on_make_selection=lambda *_args, **_kwargs: None,
+            on_extend_selection=lambda *_args, **_kwargs: None,
+        )
+        row.render((80,), False)
+        return row
+
+    def test_hover_expanded_visible_event(self):
+        state = self._state(expand_rows=True)
+        row = self._event_row(state)
+
+        hover = row.mouse_to_hover(state.column_header_width, 0)
+
+        self.assertTrue(hover.is_event())
+        self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
+        self.assertTrue(hover.abbrev_visible)
+
+    def test_hover_expanded_truncated_abbrev_is_not_visible(self):
+        state = self._state(expand_rows=True, cycles_per_char=Fraction(1, 4))
+        row = self._event_row(state)
+        event = next(row.ed[state.start_ps :])
+        event.abbrev = "flush"
+        row.render((80,), False)
+
+        hover = row.mouse_to_hover(state.column_header_width, 0)
+
+        self.assertTrue(hover.is_event())
+        self.assertFalse(hover.abbrev_visible)
+
+    def test_hover_collapsed_single_event_cell_returns_event(self):
+        state = self._state(expand_rows=False)
+        row = self._event_row(state)
+
+        hover = row.mouse_to_hover(state.column_header_width, 0)
+
+        self.assertTrue(hover.is_event())
+        self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
+        self.assertFalse(hover.abbrev_visible)
+
+    def test_hover_expanded_aggregate_cell_returns_time_range(self):
+        state = self._state(expand_rows=True, cycles_per_char=Fraction(2048, 1), start_ps=0)
+        row = self._event_row(state)
+
+        hover = row.mouse_to_hover(state.column_header_width, 0)
+
+        self.assertTrue(hover.is_time_range())
+        self.assertFalse(hover.is_event())
+        self.assertEqual(0, hover.start_ps)
+        self.assertEqual(2048 * self.__class__.PS_PER_CYCLE, hover.end_ps)
+
+    def test_hover_zoomed_in_single_event_spans_multiple_columns(self):
+        state = self._state(expand_rows=False, cycles_per_char=Fraction(1, 8))
+        row = self._event_row(state)
+
+        for offset in range(8):
+            hover = row.mouse_to_hover(state.column_header_width + offset, 0)
+            self.assertTrue(hover.is_event())
+            self.assertEqual(self.__class__.FLUSH_TIMES_PS[0], hover.event.time)
+            self.assertFalse(hover.abbrev_visible)
+
+        self.assertFalse(row.mouse_to_hover(state.column_header_width + 8, 0))
+
+    def test_hover_empty_and_header_positions(self):
+        state = self._state(expand_rows=True)
+        row = self._event_row(state)
+
+        self.assertFalse(row.mouse_to_hover(state.column_header_width - 1, 0))
+        self.assertFalse(row.mouse_to_hover(state.column_header_width, 1))
+        self.assertFalse(row.mouse_to_hover(state.column_header_width + 1, 0))
 
 
 class TestExpandedLazyTransactionView(CatscanDataTest):

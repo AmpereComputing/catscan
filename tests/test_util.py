@@ -83,6 +83,22 @@ class TestUtil(unittest.TestCase):
         self.assertIsNone(hex_re.match("foobar"))
         self.assertIsNone(hex_re.match("inum"))
 
+    def test_format_event_data_items(self):
+        hex_re = hex_args_to_re(["core.fetch.pc"])
+
+        self.assertEqual(
+            [
+                ("pc", "0x4000", "core.fetch.pc"),
+                ("status", 7, "core.fetch.status"),
+            ],
+            format_event_data_items(
+                {"core.fetch.status": 7, "core.fetch.pc": "0x4000"},
+                "core.fetch.lookup",
+                hex_re,
+                sort_keys=True,
+            ),
+        )
+
     def test_glob_to_pattern(self):
         inum_re = re.compile(glob_to_pattern("*.inum"))
         self.assertIsNotNone(inum_re.match("sys.soc_0.core_0.gpc.inum"))

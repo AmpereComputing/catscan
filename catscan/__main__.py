@@ -24,6 +24,7 @@ from catscan.events.mapping import (
     value_map_abbreviation_spec,
     value_string_abbreviation_spec,
 )
+from catscan.mouse_tracking import enable_mouse_hover_tracking
 from catscan.widgets.top import Top
 
 HEXARGS_DEFAULT = [
@@ -258,6 +259,9 @@ def parse_args() -> argparse.Namespace:
 
 def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> Top:
     top = Top(args)
+    dynamic_abbreviations = (
+        args.value_string_abbrev + args.value_map_abbrev + load_mapping_file_abbreviations(args.mapping_file)
+    )
     event_loop = asyncio.new_event_loop()
     event_loop.set_debug(args.debug)
     asyncio.set_event_loop(event_loop)
@@ -277,9 +281,6 @@ def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> T
     loop.screen.reset_default_terminal_palette()
     loop.screen.focus_reporting = True
 
-    dynamic_abbreviations = (
-        args.value_string_abbrev + args.value_map_abbrev + load_mapping_file_abbreviations(args.mapping_file)
-    )
     mapper = Mapper(
         event_groups=args.event_group,
         hex_args=[],
@@ -315,6 +316,8 @@ def setup(args: argparse.Namespace, screen: urwid.BaseScreen | None = None) -> T
         transaction_end=args.tx_end,
         convert_enumerations=args.convert_enumerations,
     )
+
+    enable_mouse_hover_tracking(loop.screen)
 
     return top
 

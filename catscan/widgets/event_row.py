@@ -12,9 +12,9 @@ import urwid
 
 from catscan.data import NUM_EVENT_COLORS, Event, EventData, TransactionEventData
 from catscan.search import Searcher
-from catscan.state import CatscanState, HashableFrozenDict, Selection
-from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents
-from catscan.util import even_odd_focused, str_fit_width
+from catscan.state import CatscanState, HashableFrozenDict, HoverSelection, Selection
+from catscan.user_input import ACTIONS, action_keypresses, action_mouseevents, is_mouse_hover_event
+from catscan.util import even_odd_focused, str_fit_width, str_width
 
 
 # TODO should this grow?
@@ -358,6 +358,7 @@ class EventRow(EventRowBase):
         row_index: int,
         on_make_selection: Callable,
         on_extend_selection: Callable,
+        on_hover: Callable | None = None,
         active_background: str | None = None,
         expanded_allowed: bool = True,
     ) -> None:
@@ -366,8 +367,10 @@ class EventRow(EventRowBase):
         self.row_index = row_index
         self.on_make_selection = on_make_selection
         self.on_extend_selection = on_extend_selection
+        self.on_hover = on_hover
         self.active_background = active_background
         self.expanded_allowed = expanded_allowed
+        self._visible_abbrev_event_ids: set[int] = set()
         super().__init__()
 
     @property
@@ -591,6 +594,8 @@ class EventRow(EventRowBase):
 
             for l, event in enumerate(display_events):
                 color_idx, text = self.render_event(event, cols_this_cycle)
+                if str_width(event.abbrev) <= cols_this_cycle:
+                    self._visible_abbrev_event_ids.add(event.id)
 
                 if highlighting_search_row and self.state.searcher.match(event):
                     color_idx = 7
@@ -727,6 +732,7 @@ class EventRow(EventRowBase):
 
         has_focus = focus and self.state.has_focus
         default_attr = f"{even_odd_focused(self.row_index, has_focus)}_event_row"
+        self._visible_abbrev_event_ids.clear()
 
         if self.expanded:
             rows = max(1, self.ed.max_events_per_time())
@@ -747,6 +753,73 @@ class EventRow(EventRowBase):
 
     def _adjust_selection(self, event: Event, **kwargs: Any) -> Selection:
         return self.state.selection.adjust_within_row(event, duration=self.state.ps_per_cycle, **kwargs)
+
+    def _make_hover(self, **kwargs: Any) -> HoverSelection:
+        event = kwargs.get("event")
+        return HoverSelection(
+            event_row=self.ed.key(),
+            within_transaction=self._transaction_row,
+            abbrev_visible=event is not None and event.id in self._visible_abbrev_event_ids,
+            **kwargs,
+        )
+
+    def _ps_range_to_hover(self, start_ps: int, end_ps: int) -> HoverSelection:
+        it = self.ed[start_ps:end_ps]
+        first_event = next(it, None)
+        second_event = next(it, None)
+        if second_event:
+            return self._make_hover(time_range=(start_ps, end_ps))
+        if first_event:
+            return self._make_hover(event=first_event)
+        return HoverSelection()
+
+    def _ps_range_to_selection(self, start_ps: int, end_ps: int) -> Selection:
+        it = self.ed[start_ps:end_ps]
+        first_event = next(it, None)
+        second_event = next(it, None)
+        if second_event:
+            return self._make_selection(time_range=(start_ps, end_ps))
+        if first_event:
+            return self._make_selection(event=first_event, duration=self.state.ps_per_cycle)
+        return Selection()
+
+    def _mouse_to_visible_content(self, col: int, row: int) -> Event | tuple[int, int] | None:
+        if col < self.state.column_header_width or row < 0:
+            return None
+
+        col_idx = col - self.state.column_header_width
+        difference_ps = self.state.start_ps % self.state.ps_per_cycle
+        difference_chars = math.floor(difference_ps / self.state.ps_per_char)
+
+        if not self.expanded:
+            if self.state.cycles_per_char >= 1:
+                if col_idx >= len(self.data):
+                    return None
+                return self.index_to_ps_range(col_idx, self.state.cycles_per_char)
+
+            cycle_index = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
+            if cycle_index < 0 or cycle_index >= len(self.data):
+                return None
+            return self.index_to_ps_range(cycle_index, 1)
+
+        if self.state.cycles_per_char > 1:
+            assert self.state.cycles_per_char.denominator == 1
+            if col_idx >= len(self.data):
+                return None
+
+            max_row = 1 if self.data[col_idx] < 0 else self.data[col_idx]
+            if row >= max_row:
+                return None
+
+            return self.index_to_ps_range(col_idx, self.state.cycles_per_char)
+
+        data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
+        if data_idx < 0 or data_idx >= len(self.data):
+            return None
+        if row >= len(self.data[data_idx]):
+            return None
+
+        return self.data[data_idx][row]
 
     def keypress(
         self,
@@ -780,54 +853,24 @@ class EventRow(EventRowBase):
         display state. The returned Selection object may reference a single
         event, a row/time region, or neither.
         """
-        col_idx = col - self.state.column_header_width
-        difference_ps = self.state.start_ps % self.state.ps_per_cycle
-        difference_chars = math.floor(difference_ps / self.state.ps_per_char)
+        content = self._mouse_to_visible_content(col, row)
+        if isinstance(content, Event):
+            return self._make_selection(event=content, duration=self.state.ps_per_cycle)
+        if content is not None:
+            return self._ps_range_to_selection(*content)
+        return Selection()
 
-        def ps_range_to_selection(start_ps: int, end_ps: int) -> Selection:
-            it = self.ed[start_ps:end_ps]
-            first_event = next(it, None)
-            second_event = next(it, None)
-            if second_event:
-                # If at least two events, select the entire region
-                return self._make_selection(time_range=(start_ps, end_ps))
-            if first_event:
-                # If only one event, select only that event
-                return self._make_selection(event=first_event, duration=self.state.ps_per_cycle)
-            # If no events, return an empty selection
-            return Selection()
-
-        if not self.expanded:
-            if self.state.cycles_per_char >= 1:
-                start_ps, end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
-            else:
-                cycle_index = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
-                start_ps, end_ps = self.index_to_ps_range(cycle_index, 1)
-
-            return ps_range_to_selection(start_ps, end_ps)
-        if self.state.cycles_per_char > 1:
-            assert self.state.cycles_per_char.denominator == 1
-
-            # Do not select an event if the user clicked on an 'empty'
-            # portion of the column. If the value in self.data is <0, it
-            # means we are displaying a "non-empty character" here with a
-            # height of 1.
-            max_row = 1 if self.data[col_idx] < 0 else self.data[col_idx]
-            if row >= max_row:
-                return Selection()  # nothing there, return empty selection
-
-            # Convert column to the bounds of this cell, in picoseconds
-            col_start_ps, col_end_ps = self.index_to_ps_range(col_idx, self.state.cycles_per_char)
-            return ps_range_to_selection(col_start_ps, col_end_ps)
-        # Convert column to an index into the data array (only
-        # guaranteed to exist and be valid when the current view is
-        # expanded with cycles_per_char <= 1)
-        data_idx = math.floor((col_idx + difference_chars) * self.state.cycles_per_char)
-        assert data_idx >= 0 and data_idx < len(self.data)
-        if row >= len(self.data[data_idx]):
-            return Selection()  # nothing there, return empty selection
-        event = self.data[data_idx][row]
-        return self._make_selection(event=event, duration=self.state.ps_per_cycle)
+    def mouse_to_hover(self, col: int, row: int) -> HoverSelection:
+        """
+        Given a column and row within this widget, return a hover target for
+        the visible event content under the cursor.
+        """
+        content = self._mouse_to_visible_content(col, row)
+        if isinstance(content, Event):
+            return self._make_hover(event=content)
+        if content is not None:
+            return self._ps_range_to_hover(*content)
+        return HoverSelection()
 
     def mouse_to_next_selection(self, col: int, reverse: bool = False) -> Selection:
         if self.expanded:
@@ -848,6 +891,11 @@ class EventRow(EventRowBase):
         row: int,
         focus: bool,
     ) -> bool | None:
+        if is_mouse_hover_event(event, button):
+            if self.on_hover:
+                self.on_hover(self.mouse_to_hover(col, row))
+            return True
+
         # Ignore clicks to the left of where we're displaying events
         if col < self.state.column_header_width:
             return False

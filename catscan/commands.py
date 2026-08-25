@@ -30,6 +30,7 @@ class Commands(StrEnum):
     PIN_ROW = "pin"
     UNPIN_ROW = "unpin"
     ZOOM = "zoom"
+    HOVER = "hover"
     MARKS = "marks"
 
 
@@ -521,6 +522,15 @@ completable_commands = [
             Arg("marks", types=str, nargs="+"),
         ),
         kwargs=(Arg.Optional("characters", aliases=["chars"]),),
+    ),
+    CommandDefinition(
+        Commands.HOVER,
+        "Enable or disable hover popups for single-event and multiple-event cells",
+        example="single=no multiple=yes",
+        kwargs=(
+            Arg("single", types=bool),
+            Arg("multiple", types=bool),
+        ),
     ),
     CommandDefinition(
         Commands.MARKS,
