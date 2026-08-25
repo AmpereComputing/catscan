@@ -80,6 +80,8 @@ class TestingScreen(urwid.display.raw.Screen):
         for file in (self.input_r, self.input_w):
             with suppress(ValueError):
                 file.close()
+        self._resize_pipe_rd.close()
+        self._resize_pipe_wr.close()
 
     def __del__(self):
         self.close()
@@ -160,10 +162,13 @@ add_abbreviation("invalid")
             )
             screen = TestingScreen(output)
 
-            with self.assertRaisesRegex(TypeError, "expected DynamicAbbreviation, got str"):
-                setup(Args(mapping_file=[mapping_file]), screen=screen)
+            try:
+                with self.assertRaisesRegex(TypeError, "expected DynamicAbbreviation, got str"):
+                    setup(Args(mapping_file=[mapping_file]), screen=screen)
 
-            self.assertNotIn(XTERM_ENABLE_ALL_MOTION, screen.read_all())
+                self.assertNotIn(XTERM_ENABLE_ALL_MOTION, screen.read_all())
+            finally:
+                screen.close()
 
 
 class TestHoverSelection(unittest.TestCase):
@@ -231,14 +236,20 @@ class TestMain(CatscanDataTest):
         return "\n".join(line.decode() for line in lines)
 
     def loaded_top(self, **kwargs):
-        top = setup(self.args(**kwargs), screen=self.screen)
+        top = self.setup_top(**kwargs)
         top.cached_maxcol = 120
         top.update_state(top.state.copy_with(loading=False))
         top.update_stream_data(self.event_data())
         return top
 
+    def setup_top(self, **kwargs):
+        top = setup(self.args(**kwargs), screen=self.screen)
+        self.event_loops.append(top.main_loop.event_loop._loop)
+        return top
+
     def run_catscan(self, args, *steps: tuple[int, str]):
         top = setup(args, screen=self.screen)
+        self.event_loops.append(top.main_loop.event_loop._loop)
 
         for delay, command_or_motion in steps:
             top.main_loop.event_loop.alarm(delay, partial(self.do, command_or_motion))
@@ -253,6 +264,7 @@ class TestMain(CatscanDataTest):
         self.logging = NamedTemporaryFile()
         self.output = TemporaryFile("w+")
         self.screen = TestingScreen(self.output)
+        self.event_loops = []
         self.capture_asyncio_logs()
 
     def capture_asyncio_logs(self):
@@ -285,6 +297,8 @@ class TestMain(CatscanDataTest):
 
         self.asyncio_log_handler.close()
         self.asyncio_log_stream.close()
+        for event_loop in self.event_loops:
+            event_loop.close()
         self.screen.close()
         self.output.close()
         self.logging.close()
@@ -296,7 +310,7 @@ class TestMain(CatscanDataTest):
             self.assertIn(f"event_{event}", out)
 
     def test_enables_hover_tracking_after_screen_start(self):
-        top = setup(self.args(), screen=self.screen)
+        top = self.setup_top()
         before_start = self.screen.read_all()
 
         self.assertNotIn(XTERM_ENABLE_ALL_MOTION, before_start)
@@ -315,7 +329,7 @@ class TestMain(CatscanDataTest):
         self.assertIn("Help / Input Mappings", out)
 
     def test_quit_keybinding(self):
-        top = setup(self.args(), screen=self.screen)
+        top = self.setup_top()
 
         self.assertEqual(self.press_key(top, "Z"), "Z")
         with self.assertRaises(urwid.ExitMainLoop):
