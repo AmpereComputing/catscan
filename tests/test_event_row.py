@@ -71,6 +71,7 @@ class TestEventRow(CatscanDataTest):
         for ps in self.__class__.FLUSH_TIMES_PS:
             self.assertEqual(len(flush_event_list[(ps - start_ps) // self.__class__.PS_PER_CYCLE]), 1)
         self.assertEqual(sum([len(c) for c in flush_event_list]), 6)
+
     def _state(
         self,
         expand_rows: bool,

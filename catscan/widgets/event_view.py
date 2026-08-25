@@ -404,8 +404,8 @@ class EventView(urwid.WidgetWrap, View):
         on_toggle_expanded: Callable,
         on_make_selection: Callable,
         on_extend_selection: Callable,
-        on_hover: Callable,
         on_translate_event: Callable,
+        on_hover: Callable | None = None,
         on_focus_row_change: Callable | None = None,
         length_hint: int = 1,
     ) -> None:
@@ -419,7 +419,7 @@ class EventView(urwid.WidgetWrap, View):
         self.on_toggle_expanded = on_toggle_expanded
         self._on_make_selection = on_make_selection
         self._on_extend_selection = on_extend_selection
-        self._on_hover = on_hover
+        self._on_hover = on_hover or (lambda _hover: False)
         self.on_translate_event = on_translate_event
         self.on_focus_row_change = on_focus_row_change
 

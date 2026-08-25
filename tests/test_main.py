@@ -5,8 +5,8 @@ import logging
 import os
 import sys
 import unittest
-from contextlib import suppress
 from collections.abc import Iterable
+from contextlib import suppress
 from functools import partial
 from io import BufferedReader, StringIO, TextIOWrapper
 from pathlib import Path
