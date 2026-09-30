@@ -54,7 +54,7 @@ Config file options:
         for arg_string in arg_strings:
             # for regular arguments, just add them back into the list
             if not arg_string or arg_string[0] not in self.fromfile_prefix_chars:
-                new_arg_strings.append(arg_string)
+                new_arg_strings.append(self._expand_config_dir(arg_string, context))
                 continue
 
             # replace arguments referencing files with the file content
@@ -97,6 +97,13 @@ Config file options:
 
         # return the modified argument list
         return new_arg_strings
+
+    def _expand_config_dir(self, arg_string: str, context: list[str] | None) -> str:
+        if not context:
+            return arg_string
+
+        config_dir = os.path.realpath(os.path.dirname(context[-1]))
+        return arg_string.replace("%config_dir%", config_dir)
 
     def convert_arg_line_to_args(self, arg_line: str) -> list[str]:
         return shlex.split(arg_line, comments=self.enable_comments)
