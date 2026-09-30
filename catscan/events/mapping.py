@@ -235,7 +235,7 @@ disassembly_architectures = {
 class Mapper:
     def __init__(
         self,
-        event_groups: list[str] = None,
+        event_groups: list[str] | None = None,
         hex_args: list[str] | None = None,
         inst_args: list[str] | None = None,
         static_abbreviations: dict | None = None,

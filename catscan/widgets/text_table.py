@@ -252,7 +252,7 @@ class TextTable(urwid.widget.Widget):
 
     def rows(self, size: tuple[int], focus: bool = False) -> int:
         (maxcol,) = size
-        lines, a = self._render_table(maxcol)
+        lines, _ = self._render_table(maxcol)
         return len(lines)
 
     def render(

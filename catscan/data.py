@@ -408,7 +408,7 @@ class EventStreamData:
                 ancestry = []
                 ptx = tx.transaction
                 while ptx and ptx.parents:
-                    txid = list(ptx.parents)[0]
+                    txid = next(iter(ptx.parents))
                     if txid in self.transaction_event_rows:
                         ancestry.append(txid)
                     ptx = self.transactions.get(txid)
@@ -469,11 +469,12 @@ class EventStreamData:
         # Sort the events primarily by group name and second by event 'index'
         # (the order they were specified on the command-line or in a config
         # file)
-        sort_keys = []
-        for event_name, event_row in self.event_rows.items():
-            for event_spec in self._events:
-                if event_spec(event_row.original_name):
-                    sort_keys.append(((groups[event_row.group], event_spec.index), event_name))
+        sort_keys = [
+            ((groups[event_row.group], event_spec.index), event_name)
+            for event_name, event_row in self.event_rows.items()
+            for event_spec in self._events
+            if event_spec(event_row.original_name)
+        ]
 
         sorted_list = list(zip(*sorted(sort_keys)))
         # Remove duplicates while maintaining order
@@ -596,7 +597,7 @@ class EventStreamData:
                     transaction = self.transaction_event_rows[parent]
                     break
 
-            tx = self.transactions.get(list(tx.parents)[0])
+            tx = self.transactions.get(next(iter(tx.parents)))
 
         if transaction is None:
             return

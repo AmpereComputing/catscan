@@ -338,9 +338,7 @@ class CommandDefinition:
         if unmet_requirements:
             raise ValueError(f"{', '.join(unmet_requirements)} expected")
 
-        for arg in self._args:
-            if arg.required and arg.name not in args:
-                unmet_requirements.append(arg.name)
+        unmet_requirements.extend([arg.name for arg in self._args if arg.required and arg.name not in args])
 
         if unmet_requirements:
             raise ValueError(f"{', '.join(unmet_requirements)} required")

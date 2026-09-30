@@ -13,11 +13,11 @@ from catscan.widgets.event_view import EventView
 
 
 class TransactionEventRow(EventRow):
-    LEVEL_CHARS = [
+    LEVEL_CHARS = (
         "+",
         "↳",
         "-",
-    ]
+    )
 
     @property
     def level(self) -> int:
