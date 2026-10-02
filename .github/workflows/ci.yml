@@ -38,14 +38,17 @@ jobs:
         run: hatch check code
 
   unit-tests:
-    name: Unit Tests
+    name: Unit Tests (${{ matrix.python-version }})
     runs-on: ubuntu-26.04
     needs: lint
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
       - name: Install Hatch
         run: pipx install hatch
       - name: Fetch public dependencies over HTTPS
