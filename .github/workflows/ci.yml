@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  format:
+    name: Format
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Hatch
+        run: pipx install hatch
+      - name: Check formatting
+        run: hatch check fmt
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-26.04
+    needs: format
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Hatch
+        run: pipx install hatch
+      - name: Check lint
+        run: hatch check code
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-26.04
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Hatch
+        run: pipx install hatch
+      - name: Fetch public dependencies over HTTPS
+        run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+      - name: Restore vcpkg cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/vcpkg/archives
+          key: "vcpkg-${{ runner.os }}-x64-linux-${{ hashFiles('pyproject.toml') }}"
+      - name: Run unit tests
+        run: >-
+          CMAKE_ARGS="-D CMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          hatch test
+
+  python-package:
+    name: Python Package
+    runs-on: ubuntu-26.04
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Hatch
+        run: pipx install hatch
+      - name: Build Python package
+        run: hatch build
