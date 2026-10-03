@@ -14,6 +14,7 @@ import urwid
 
 from catscan import events
 from catscan.argument_parser import ArgumentParser
+from catscan.autopan import AutopanMode
 from catscan.colors import palette
 from catscan.data import DataView
 from catscan.events import trace_events
@@ -80,6 +81,13 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--view", type=DataView, choices=list(DataView), default=DataView.RESOURCE, help="type of view to generate"
+    )
+    parser.add_argument(
+        "--autopan",
+        type=AutopanMode,
+        choices=list(AutopanMode),
+        default=AutopanMode.NONE,
+        help="automatically pan to focused row events while vertically navigating",
     )
     parser.add_argument(
         "--onload-command",
@@ -244,6 +252,9 @@ def parse_args() -> argparse.Namespace:
 
     args = parser.parse_args()
     args.static_abbreviations = dict(args.static_abbreviations)
+
+    if args.view == DataView.RESOURCE and args.autopan == AutopanMode.COMMIT_EVENT:
+        parser.error("--autopan commit-event requires --view transactions")
 
     if args.log:
         logging.basicConfig(

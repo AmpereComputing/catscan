@@ -580,7 +580,7 @@ class EventView(urwid.WidgetWrap, View):
     def focused_row_key(self) -> str | int | None:
         """Return the key for the focused event row, if any."""
         row_type, row_key = self.focused_row()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
+        return row_key if row_type is RowType.EVENT else None
 
     def focused_time_range(self, all_views: bool = False) -> tuple[int, int]:
         rowwidget, _ = self.list_walker.get_focus()
@@ -588,8 +588,21 @@ class EventView(urwid.WidgetWrap, View):
             return rowwidget.ed.start_time, rowwidget.ed.end_time
         return 0, 0
 
-    def _emit_position_change_notifications(self, force: bool = False) -> None:
-        self._emit_focus_change_if_needed(None, force=force)
+    def visible_time_range(self) -> tuple[int, int]:
+        """Return the horizontal event-time range currently rendered by this view."""
+        visible_columns = self.visible_event_columns()
+        start_ps = self.state.start_ps - (self.state.start_ps % self.state.ps_per_cycle)
+        difference_chars = math.floor((self.state.start_ps - start_ps) / self.state.ps_per_char)
+        visible_cycles = math.ceil((visible_columns + difference_chars) * self.state.cycles_per_char)
+        end_ps = start_ps + visible_cycles * self.state.ps_per_cycle
+        return start_ps, end_ps
+
+    def visible_event_columns(self) -> int:
+        """Return the number of event-data columns currently rendered."""
+        return max(0, self._columns - self.scrollable._border_width - self.state.column_header_width)
+
+    def _emit_position_change_notifications(self, user: bool = False, force: bool = False) -> None:
+        self._emit_focus_change_if_needed(None, user=user, force=force)
 
     def center_column(self, maxcol: int | None = None) -> int:
         maxcol = maxcol or self._columns
@@ -604,7 +617,7 @@ class EventView(urwid.WidgetWrap, View):
             return None
 
         row_type, row_key = self.list_box.body[position].row_id()
-        return None if row_type is RowType.RESOURCE_BASE else row_key
+        return row_key if row_type is RowType.EVENT else None
 
     def visible_row_keys(self) -> list[str | int]:
         """Return row keys currently visible in top-to-bottom order."""
@@ -645,7 +658,10 @@ class EventView(urwid.WidgetWrap, View):
         return True
 
     def _emit_focus_change_if_needed(
-        self, movement_alignment: Literal["before", "after"] | None, force: bool = False
+        self,
+        movement_alignment: Literal["before", "after"] | None,
+        user: bool = False,
+        force: bool = False,
     ) -> None:
         if self.on_focus_row_change is None:
             return
@@ -653,7 +669,7 @@ class EventView(urwid.WidgetWrap, View):
         focused_row_key = self.focused_row_key()
         if force or focused_row_key != self._last_focused_row_key:
             self._last_focused_row_key = focused_row_key
-            self.on_focus_row_change(self, focused_row_key, movement_alignment)
+            self.on_focus_row_change(self, focused_row_key, movement_alignment, user)
 
     def _shift_focus(self, size: tuple[int, int], row_translation: int) -> bool:
         (maxcol, max_inset) = size
@@ -714,11 +730,11 @@ class EventView(urwid.WidgetWrap, View):
             if mouse_diff[1] != 0:
                 self._shift_focus(size, -mouse_diff[1])
 
-            self._emit_position_change_notifications()
+            self._emit_position_change_notifications(user=mouse_diff[1] != 0)
             return True
 
         handled = self._w.mouse_event(size, event, button, col, row, focus)
-        self._emit_position_change_notifications()
+        self._emit_position_change_notifications(user=event == "mouse press")
         return handled
 
     def keypress(
@@ -727,7 +743,6 @@ class EventView(urwid.WidgetWrap, View):
         key: str,
     ) -> str | None:
         (maxcol, maxrow) = size
-
         # Because the underlying container widget only understands 'up' and
         # 'down' translate whatever keys we want to use for down/up (i.e. j/k)
         # into literal down/up
@@ -742,11 +757,13 @@ class EventView(urwid.WidgetWrap, View):
                 key = translation
                 break
 
+        vertical_navigation = key in {"up", "down", "page up", "page down"}
+
         # First, see if any of the children of this widget want to handle these
         # keypresses
         key = self._w.keypress(size, key)
         if key is None:
-            self._emit_position_change_notifications()
+            self._emit_position_change_notifications(user=vertical_navigation)
             return None
 
         handled = False
@@ -763,15 +780,19 @@ class EventView(urwid.WidgetWrap, View):
         elif key in action_keypresses[ACTIONS.SCROLL_HALF_PAGE_UP]:
             self._shift_view(size, self.list_box.get_focus_offset_inset(size)[1] - int(maxrow / 2))
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.SCROLL_HALF_PAGE_DOWN]:
             self._shift_view(size, self.list_box.get_focus_offset_inset(size)[1] + int(maxrow / 2))
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.SCROLL_TOP]:
             self._shift_view(size, -self.list_box.focus_position)
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.SCROLL_BOTTOM]:
             self._shift_view(size, len(self.list_walker) - 1)
             handled = True
+            vertical_navigation = True
         elif key in action_keypresses[ACTIONS.TOP_FOCUS]:
             self.list_box.set_focus_valign("top")
             handled = True
@@ -783,7 +804,7 @@ class EventView(urwid.WidgetWrap, View):
             handled = True
 
         if handled:
-            self._emit_position_change_notifications()
+            self._emit_position_change_notifications(user=vertical_navigation)
             return None
 
         return key

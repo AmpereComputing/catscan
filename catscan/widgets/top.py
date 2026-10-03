@@ -16,6 +16,7 @@ from typing import Any, Literal
 import urwid
 from perf_streams.event_stream import Event
 
+from catscan.autopan import Autopan, AutopanMode
 from catscan.commands import Commands, DefaultCommands, ZoomTypes, command_definitions, parse_command_args
 from catscan.commit_sync import CommitSyncer, CommitSyncState, build_commit_index, build_pushout_index
 from catscan.data import (
@@ -92,6 +93,7 @@ class Top(urwid.widget.Widget):
 
     def __init__(self, args: Namespace):
         self.primary_view_type = args.view
+        self.autopan = Autopan(args.autopan, args.instruction_commit_event, args.instruction_commit_index)
         self._infer_period = args.period is None
         self.state = CatscanState(
             has_focus=True,
@@ -675,6 +677,27 @@ class Top(urwid.widget.Widget):
     def scroll_right(self) -> bool:
         return self._translate(self._quarter_screen)
 
+    def _auto_pan_to_row(
+        self,
+        view: EventView,
+        row_key: str | int,
+        *,
+        sync_index: int | None = None,
+        external_sync: bool = False,
+    ) -> bool:
+        row = view.data_view().get(row_key)
+        target_time = self.autopan.target_time(
+            view,
+            row,
+            commit_syncer=self.commit_syncer,
+            sync_index=sync_index,
+        )
+        if target_time is None:
+            return False
+
+        target_start_ps = int(target_time // self.state.ps_per_char * self.state.ps_per_char)
+        return self.update_state(self.state.copy_with(start_ps=target_start_ps), external_sync=external_sync)
+
     def make_selection(self, selection: Event | Selection, views: list[str] | None = None) -> bool:
         if isinstance(selection, Event):
             data_view = self._get_data_view_from_views(views)
@@ -1185,6 +1208,13 @@ class Top(urwid.widget.Widget):
                 return
 
             self._apply_commit_sync_display_state(sync_state)
+            if self.autopan.mode == AutopanMode.COMMIT_EVENT:
+                self._auto_pan_to_row(
+                    self._transaction_view,
+                    transaction_row,
+                    sync_index=sync_state.sync_index,
+                    external_sync=True,
+                )
             if self._transaction_view.is_row_visible(transaction_row):
                 return
 
@@ -1260,14 +1290,16 @@ class Top(urwid.widget.Widget):
     def on_focus_row_change(
         self,
         view: EventView,
-        _focused_row_key: str | int | None,
+        focused_row_key: str | int | None,
         movement_alignment: Literal["before", "after"] | None,
+        user: bool,
     ) -> None:
-        """Send commit sync when the focused transaction row changes."""
-        if not self._should_send_transaction_commit_sync(view):
-            return
+        """Send commit sync and auto-pan after focused-row changes."""
+        if self._should_send_transaction_commit_sync(view):
+            self.send_commit_sync(movement_alignment=movement_alignment)
 
-        self.send_commit_sync(movement_alignment=movement_alignment)
+        if user and focused_row_key is not None:
+            self._auto_pan_to_row(view, focused_row_key)
 
     def matching_rows(self, pattern: str) -> list[str]:
         row_pattern = glob_to_pattern(pattern)
@@ -1392,6 +1424,12 @@ class Top(urwid.widget.Widget):
         elif command == Commands.SEARCH_INT:
             self.search(args["search_integer"], search_mask=args.get("integer_mask"))
             return False
+        elif command == Commands.AUTOPAN:
+            mode = args["mode"]
+            if mode == AutopanMode.COMMIT_EVENT and self.primary_view_type == DataView.RESOURCE:
+                self.add_message("autopan: commit-event requires the transactions view")
+                return False
+            self.autopan.mode = mode
         elif command == Commands.PIN_ROW:
             if len(args) == 1:
                 rows_to_pin = self.matching_rows(args["row_glob"])

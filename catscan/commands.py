@@ -11,6 +11,7 @@ from fractions import Fraction
 from functools import cached_property
 from typing import Any
 
+from catscan.autopan import AutopanMode
 from catscan.completion import FilteredSuggestions
 from catscan.search import MatchType
 from catscan.util import glob_to_pattern
@@ -31,6 +32,7 @@ class Commands(StrEnum):
     UNPIN_ROW = "unpin"
     ZOOM = "zoom"
     MARKS = "marks"
+    AUTOPAN = "autopan"
 
 
 # Commands which are not explicit (i.e. ":<argument>")
@@ -523,6 +525,11 @@ completable_commands = [
     CommandDefinition(
         Commands.MARKS,
         "Show all marks",
+    ),
+    CommandDefinition(
+        Commands.AUTOPAN,
+        "Automatically pan to a focused row's first, nearest, or commit event",
+        args=(Arg.Required("mode", types=AutopanMode),),
     ),
 ]
 default_commands = [

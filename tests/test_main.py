@@ -5,7 +5,8 @@ import logging
 import os
 import sys
 import unittest
-from contextlib import suppress
+import unittest.mock
+from contextlib import redirect_stderr, redirect_stdout, suppress
 from functools import partial
 from io import BufferedReader, StringIO, TextIOWrapper
 from pathlib import Path
@@ -15,7 +16,8 @@ import urwid
 from perf_streams.event_stream import EventStreamWriter
 from test_data import CatscanDataTest
 
-from catscan.__main__ import load_mapping_file_abbreviations, setup
+from catscan.__main__ import load_mapping_file_abbreviations, parse_args, setup
+from catscan.autopan import AutopanMode
 from catscan.events import trace_events
 from catscan.events.mapping import ValueStringAbbreviation
 
@@ -32,6 +34,7 @@ class Args:
         self.sort_keys = True
         self.instruction_commit_event = "core.commit"
         self.instruction_commit_index = "core.inum"
+        self.autopan = AutopanMode.NONE
         self.convert_enumerations = True
         self.debug = True
 
@@ -140,6 +143,17 @@ add_abbreviation(ValueStringAbbreviation(["second"], value_suffix="second_suffix
         self.assertEqual(
             ["first_suffix", "second_suffix"], [abbreviation.value_suffix for abbreviation in abbreviations]
         )
+
+
+class TestArgumentParsing(unittest.TestCase):
+    def test_resource_view_rejects_commit_event_autopan(self):
+        with (
+            unittest.mock.patch.object(sys, "argv", ["catscan", "--autopan", "commit-event"]),
+            redirect_stdout(StringIO()),
+            redirect_stderr(StringIO()),
+            self.assertRaises(SystemExit),
+        ):
+            parse_args()
 
 
 class TestMain(CatscanDataTest):

@@ -73,11 +73,11 @@ class TransactionView(EventView):
         self._last_top_visible_row_key = None
         self._last_top_visible_position = None
 
-    def _emit_position_change_notifications(self, force: bool = False) -> None:
+    def _emit_position_change_notifications(self, user: bool = False, force: bool = False) -> None:
         top_position = self._visible_top_position()
         movement_alignment = self._movement_alignment(top_position)
         self._emit_viewport_change_if_needed(top_position, movement_alignment, force=force)
-        self._emit_focus_change_if_needed(movement_alignment, force=force)
+        self._emit_focus_change_if_needed(movement_alignment, user=user, force=force)
 
     def _visible_top_position(self) -> int | None:
         if self._last_rendered_size is None or len(self.list_box.body) == 0:

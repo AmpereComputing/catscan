@@ -100,6 +100,13 @@ detailed below. Typing `:help` at any point will display the current key/mouse
 mappings and brief summaries of available commands. You can also do
 `:help <command>` to get just the help for a specific command.
 
+Use `--autopan first-event` (or `:autopan first-event`) to bring a newly
+focused row's earliest event to the left edge when none of its events are
+visible. `nearest-event` brings the closest off-screen event into view,
+left-aligning rows to the right and right-aligning rows to the left.
+Transaction view also supports `commit-event`, which uses the row's shared
+instruction-commit event when available. The default is `none`.
+
 Note that `catscan` accepts two main type of keyboard interaction: 'commands' and
 'key bindings/sequences'. Commands are entered much the same way they are in
 vim: typing `:` (a literal colon) causes a command prompt to appear at the
